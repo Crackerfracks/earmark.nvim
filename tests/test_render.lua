@@ -52,24 +52,31 @@ T['nested spans of the same label are visible (his "this is" probe)'] = function
   eq(segs.overlaps[1].e, { 0, 7 })
   local g = child.lua_get('require("earmark.render").overlap_group(...)', { segs.overlaps[1].hexes })
   local d = hl(g)
-  eq(d.bg, hex('2')) -- keeps the label's colour
-  eq(d.underline, true)
+  -- a deeper shade of the label's colour, nothing underneath
+  MiniTest.expect.no_equality(d.bg, hex('2'))
+  eq(child.lua_get('require("earmark.color").distance(...)', { d.bg, hex('2') }) < 0.2, true)
+  eq(d.underline, nil)
   local s = shot()
   -- "this " vs "is": same label, different look
   MiniTest.expect.no_equality(attr(s, 1, 1), attr(s, 1, 6))
   eq(attr(s, 1, 6), attr(s, 1, 7))
 end
 
-T['three levels of one label get a double underline'] = function()
+T['each level of one label is a deeper shade'] = function()
   h.open(LINE)
   mark({ 0, 0 }, { 0, 14 }, '4')
   mark({ 0, 5 }, { 0, 14 }, '4')
   mark({ 0, 8 }, { 0, 9 }, '4')
   local segs = segments()
   eq(#segs.overlaps, 3) -- [5,8) two deep, [8,9) three deep, [9,14) two deep
-  local g = child.lua_get('require("earmark.render").overlap_group(...)', { segs.overlaps[2].hexes })
+  local g2 = child.lua_get('require("earmark.render").overlap_group(...)', { segs.overlaps[1].hexes })
+  local g3 = child.lua_get('require("earmark.render").overlap_group(...)', { segs.overlaps[2].hexes })
   eq(segs.overlaps[2].s, { 0, 8 })
-  eq(hl(g).underdouble, true)
+  local L = function(x)
+    return child.lua_get('(function(h) return (require("earmark.color").rgb_to_oklab(require("earmark.color").hex_to_rgb(h))) end)(...)', { x })
+  end
+  local l1, l2, l3 = L(hex('4')), L(hl(g2).bg), L(hl(g3).bg)
+  eq(l1 > l2 and l2 > l3, true)
 end
 
 T['partial overlap of two colours is drawn in their mix, underlined in the outer colour'] = function()
@@ -118,8 +125,9 @@ T['overlap.style = top turns composites off'] = function()
   eq(#segments().overlaps, 0)
 end
 
-T['second label is an undercurl, labels 3+ are swatches after the span'] = function()
+T['with overlap.extra = squares, labels 3+ are swatches after the span'] = function()
   h.open(LINE)
+  child.lua('require("earmark.config").options.overlap.extra = "squares"')
   local id = mark({ 0, 0 }, { 0, 4 }, '1')
   child.lua(
     'require("earmark.buffer").set_values(0, ..., { {set="vivid",label="1"}, {set="vivid",label="2"}, {set="vivid",label="3"}, {set="vivid",label="4"} })',
@@ -144,6 +152,7 @@ end
 
 T['swatches stay after the span while typing right after it, and go with an erase'] = function()
   h.open(LINE)
+  child.lua('require("earmark.config").options.overlap.extra = "squares"')
   local id = mark({ 0, 0 }, { 0, 4 }, '1')
   child.lua(
     'require("earmark.buffer").set_values(0, ..., { {set="vivid",label="1"}, {set="vivid",label="2"}, {set="vivid",label="3"} })',
@@ -156,6 +165,35 @@ T['swatches stay after the span while typing right after it, and go with an eras
   child.lua('require("earmark.buffer").erase(0, { ... })', { id })
   s = shot()
   eq(table.concat(s.text[1], '', 1, 7), 'thisXY ')
+end
+
+T['labels 3+ share the undercurl in equal runs; the line is not shifted'] = function()
+  h.open(LINE)
+  local id = mark({ 0, 0 }, { 0, 7 }, '1') -- "this is"
+  child.lua(
+    'require("earmark.buffer").set_values(0, ..., { {set="vivid",label="1"}, {set="vivid",label="2"}, {set="vivid",label="3"}, {set="vivid",label="4"} })',
+    { id }
+  )
+  local curls = segments().curls
+  eq(#curls, 3)
+  eq({ curls[1].s, curls[1].e, curls[1].hex }, { { 0, 0 }, { 0, 2 }, hex('2') })
+  eq({ curls[2].s, curls[2].e, curls[2].hex }, { { 0, 2 }, { 0, 4 }, hex('3') })
+  eq({ curls[3].s, curls[3].e, curls[3].hex }, { { 0, 4 }, { 0, 7 }, hex('4') })
+  local s = shot()
+  eq(table.concat(s.text[1], '', 1, 10), 'this is a ')
+  MiniTest.expect.no_equality(attr(s, 1, 1), attr(s, 1, 3))
+end
+
+T['a stale annotation is drawn faded'] = function()
+  h.open(LINE)
+  local base = child.lua_get('require("earmark.sets").group({ set = "vivid", label = "3" })')
+  local stale = child.lua_get('require("earmark.sets").group({ set = "vivid", label = "3" }, nil, "stale")')
+  local b, f = hl(base), hl(stale)
+  eq(f.underdashed, true)
+  local C = function(x)
+    return child.lua_get('(function(h) local _, a, b = require("earmark.color").rgb_to_oklab(require("earmark.color").hex_to_rgb(h)); return math.sqrt(a*a+b*b) end)(...)', { x })
+  end
+  eq(C(f.bg) < C(b.bg) * 0.5, true)
 end
 
 T['buffers without annotations cost nothing'] = function()

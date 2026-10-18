@@ -117,11 +117,11 @@ local function render(buf, S, a, s, e)
   M.render_swatch(buf, S, a, e)
 end
 
---- Labels 3 and up: one small square per label right after the span, in its colour.
---- (The second label is an undercurl, drawn by `render.lua`.)
+--- With `overlap.extra = 'squares'`, labels 3 and up: one small square per label right after
+--- the span, in its colour. (Otherwise they share the undercurl, drawn by `render.lua`.)
 function M.render_swatch(buf, S, a, e)
   local old = S.swatch[a.id]
-  if #a.values < 3 or not e then
+  if #a.values < 3 or not e or config.options.overlap.extra ~= 'squares' then
     if old then
       pcall(api.nvim_buf_del_extmark, buf, M.ns_swatch, old)
       S.swatch[a.id] = nil
