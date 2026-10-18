@@ -6,6 +6,8 @@ text, even while the text keeps changing.
 - **Labels come from sets.** The default sets are five generated palettes with keys 1–99,
   and you can define your own.
 - **A count picks the label:** `3ghiw` marks a word with label 3.
+- **No count opens a small prompt** next to the text: type a key, a name or part of one,
+  see the colour live on the text, press Enter. Tab names the label as you go.
 - **Annotations survive what usually breaks highlights:** live edits, formatters
   rewriting the buffer, `:e!`, edits made outside Neovim, renamed files, and undo.
   - When the annotated text is rewritten, the annotation is marked **stale**.
@@ -14,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Notes, the label prompt, project label-set files and pickers are next.
+Status: early. Overlap rendering, notes, tags, pickers and project label-set files are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -32,8 +34,11 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `{count}gh{motion}` | annotate the motion with label `{count}` of the current set (`3ghiw`, `12gh$`, `ghap`) |
 | `{count}ghh` | annotate the line |
 | `{Visual}{count}gh` | annotate the selection (block selections: one annotation per line) |
-| `gh` without a count | reuse the last label |
-| `.` | repeat with the same label |
+| `gh{motion}` without a count | open the label prompt (see below) |
+| `.` | repeat with the same label, no prompt |
+| `<leader>ml` | change the label of the annotation under cursor (`{count}` picks among overlaps) |
+| `<leader>ma` | add another label to the annotation under cursor |
+| `<leader>mr` | name (or rename) the label of the annotation under cursor |
 | `<leader>mx` | erase annotation under cursor (Visual: all in selection) |
 | `<leader>mX` | erase every annotation in the buffer (restorable) |
 | `<leader>mu` | restore the most recently erased |
@@ -41,10 +46,34 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>ms` | switch to the next label set |
 | `<leader>mi` | show label, status and original text under cursor |
 
+### The label prompt
+
+`gh` without a count opens a one-line prompt beside the span. The span shows the selected
+colour while you type, and the list under the input narrows as you go:
+
+- digits match keys first, then the shades of that family (`3` → 3, 13, 23 …);
+- anything else matches keys, then label names (fuzzy);
+- empty input offers the last label, then the labels already used in this file.
+
+| In the prompt | |
+|---|---|
+| `<CR>` | apply the selected label |
+| `<Tab>` | apply and name it (the name stage); `<Tab>`/`<CR>` there accepts the name |
+| `<S-Tab>` | back to the label stage |
+| `<C-n>` `<C-p>` / `<Down>` `<Up>` (Normal: `j` `k`) | move through candidates |
+| `<C-s>` | try the next label set |
+| `<Esc>` | Normal mode (edit the query with the usual motions); `<Esc>`/`q` again cancels |
+
+The name stage is pre-filled from what you called that label before: in this file, then
+elsewhere in the project (`<root>/.earmark/names.json`), then anywhere
+(`<storage_dir>/names.json`). An empty name clears it for this file. With
+`prompt.ask_name = 'first_use'` (default) you are asked to name a label the first time you
+use it in a file; `'always'` and `'never'` do what they say.
+
 Annotating exactly the same span again changes its label. Overlapping annotations stack,
 with smaller spans drawn on top.
 
-`:Earmark {info|erase|clear|restore|next|prev|cycle_set|set [name]|reload|log}`
+`:Earmark {info|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark log` shows recent warnings and errors (also written to `<storage_dir>/earmark.log`).
 
@@ -66,7 +95,14 @@ require('earmark').setup({
     erase = '<leader>mx', clear = '<leader>mX', restore = '<leader>mu',
     next = '<leader>mn', prev = '<leader>mN',
     cycle_set = '<leader>ms', info = '<leader>mi',
+    relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
+  prompt = {
+    width = 44, -- inner width of the prompt float
+    max_rows = 8, -- candidate rows shown
+    ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
+  },
+  ui = { border = 'rounded' },
 })
 ```
 
@@ -87,7 +123,9 @@ sets = {
 A count resolves to the label whose key is that number, else to the label at that position.
 
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
-`(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`, `(earmark-cycle-set)`, `(earmark-info)`.
+`(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
+`(earmark-cycle-set)`, `(earmark-info)`, `(earmark-relabel)`, `(earmark-add-value)`,
+`(earmark-rename)`.
 
 ## Storage
 
