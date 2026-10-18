@@ -487,45 +487,42 @@ test runs instead of being skipped. `make demo` builds the demo project describe
 docs test checks that every default key and subcommand is in this README and in
 `doc/earmark.txt`, and that the help file's tags are valid.
 
-## Status (2026-10-19)
+## Status (2026-10-18)
 
-The 2026-10 rebuild plan is done: milestones M0 to M10 landed as stacked draft PRs (#1 to
-#11), and #12 fixes what an audit against the old Numhi conversations found (names carrying
-across a project's files, a second label on the same word showing as an overlap, `<Esc>`
-while naming, flash remote operations from the prompt or a note, the statusline inside other
-sections, linewise erase, tags hidden at startup). 173 tests pass on Neovim 0.11 and 0.12.
+The 2026-10 rebuild plan is done: milestones M0 to M10 landed as PRs #1 to #11, and #12
+fixed what an audit against the old Numhi conversations found. Since then: bug fixes found
+while recording the demos (#13), the demos page (#14, #16 to #18), colour names, the palette
+and the count hint (#15), the same-span question (#19), colours that adapt to light themes
+(#20), new overlap looks (#21), a clearer naming prompt and exports beside the file (#22).
 The plan is in `docs/PLAN.md`.
 
-Defaults that were decided overnight and are worth a second look:
+Decided with Stephen on 2026-10-18 (from his comments on the demos page):
 
 1. Naming: the prompt asks for a name the first time a label is used in a project
    (`prompt.ask_name = 'first_use'`), and that name then applies in the project's other
-   files; `'always'` makes it ask every time.
-2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line (`@A`
-   in the hover, where Markdown would hide brackets).
+   files (`.earmark/names.json` is committed). The naming step now says plainly what is
+   being named.
+2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line;
+   `<leader>mv` shows or hides tags and identifiers (hidden at startup); pencils always show.
 3. Overlaps: mixed colours with the outer colour as underline; a second label is an
-   undercurl, and more labels split the undercurl into equal runs (nothing shifts the line);
-   nested levels of one label are deeper shades; stale marks are faded. Revised 2026-10-18.
+   undercurl and more labels split the undercurl into equal runs (nothing shifts the line);
+   nested levels of one label are deeper shades; stale marks are faded.
 4. The hover header is the label colour as text (`▍ name`), not a filled bar.
-5. `<leader>mv` shows or hides tags and identifiers at the ends of lines (hidden at
-   startup); pencils always show.
-6. Colours adapt to the colour scheme's background (`color_adapt`): decided 2026-10-18.
-7. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
-8. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
-9. What the statusline shows: the next label, counts, the warning count and the digit row.
-10. Storage is JSON only; SQLite and encryption are dropped.
-11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default; `export.location`
-    can put them next to the annotated files too. Confirmed 2026-10-18.
-12. `.earmark/names.json` (label names for the project) is committed, not ignored.
-13. Another label on exactly the same span is added to the annotation (an overlap) rather
-    than replacing its label; `<leader>ml` replaces. Confirmed 2026-10-18, with a question
-    first (a add / r replace / Esc cancel, `prompt.confirm_stack`).
+5. Colours adapt to the colour scheme's background (`color_adapt`).
+6. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
+7. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
+8. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default; `export.location`
+   can put them next to the annotated files too.
+9. Another label on exactly the same span asks first: a adds it (an overlap), r replaces,
+   Esc cancels (`prompt.confirm_stack`); `<leader>ml` replaces directly.
+10. Notes open in a float by default; `picker = 'auto'`; `<leader>ml` with a count picks
+    among overlapping annotations; `<leader>mg` accepts the new text as the annotation's text.
 
-Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (one typo) stays
-"ok" rather than "stale"; `<leader>mg` accepts the new text as the annotation's text;
-`<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`); set files are reloaded by checking their
-modification time on focus and buffer switches. New on 2026-10-18: `cw`, `ciw`, `s` or `C` on an
-annotation's first or last words keeps the new words in it (changing all of it keeps it too,
-marked stale) instead of shrinking or detaching it. Also new: colour names come from the xkcd
-colour survey (about 700 names after dropping crude and misspelled ones), the palette is on
-`<leader>mc`, and a count shows a hint with the label it picked while the motion is typed.
+Still open:
+
+- What the statusline shows: the next label, counts, the warning count and the digit row.
+- Storage is JSON only; SQLite and encryption are dropped.
+- An annotation re-placed by a close fuzzy match (one typo) stays "ok" rather than "stale".
+- `<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`).
+- Set files are reloaded when Neovim regains focus or you switch buffers (no file watcher).
+- The hover clip on the demos page needs re-recording (it rests on the wrong word).
