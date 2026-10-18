@@ -356,7 +356,7 @@ def render_card(c):
                        ((gif, 'GIF'), (mp4, 'MP4'), (png, 'still')) if ex(f))
     steps = ''.join('<li>%s %s</li>' % (html.escape(w), kbd(k)) for w, k in c['steps'])
     default = '<p class="default">%s</p>' % c['default'] if c['default'] else ''
-    return ('<article id="%s"><h3><a href="#%s">%s</a></h3>%s<p class="links">%s</p>'
+    return ('<article id="%s" data-comment-target><h3><a href="#%s">%s</a> <button class="cbtn" hidden>&#128172; Comment</button></h3>%s<p class="links">%s</p>'
             '<p><b>What you are looking at:</b> %s</p><p><b>Why it matters:</b> %s</p>%s'
             '<div class="try"><b>Try it yourself</b> in <code>%s</code>:<ol>%s</ol></div></article>') % (
         clip, clip, html.escape(c['title']), media, links, c['what'], c['why'], default, c['file'], steps)
@@ -409,6 +409,8 @@ code { background: #292e42; padding: 0 4px; border-radius: 3px; font-size: .92em
 .try ol { margin: .3em 0 0; padding-left: 1.4em; } .try li { margin: .2em 0; }
 .intro { background: var(--card); border-radius: 10px; padding: 12px 16px; }
 .missing { color: #f7768e; }
+.cbtn { float: right; font: 600 .8em system-ui, sans-serif; color: var(--bg); background: var(--accent); border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.cbtn:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 @media (max-width: 600px) { body { font-size: 16px; } main { padding: 10px; } article { padding: 10px; } }
 </style>
 </head>
@@ -435,6 +437,9 @@ you are asked to confirm:</p>
 <code>:e notes/fresh.md</code> and <code>:e notes/changed.md</code>). It is the same project the clips were recorded
 in, with the same theme; nothing from your own config is loaded. Run <code>make demo</code> again to reset it.</p>
 </div>
+<p class="commenting" hidden><b>Comments.</b> Every card has a <b>Comment</b> button (or click anywhere on a card in comment mode).
+Type what you think, about a default, a bug, the clip itself, and press <b>Send to Claude</b> to put it straight into
+the working session's prompt; a plain comment stays on the page for later.</p>
 <p class="lede">{n} demonstrations, in the order of the README:</p>
 <ul class="toc">
 {toc}
@@ -444,7 +449,22 @@ in, with the same theme; nothing from your own config is loaded. Run <code>make 
 <ul>{skipped}</ul>
 <p class="lede">Re-record: <code>python3 docs/demos/scripts/record.py [clip ...]</code> (needs agentwin, ghostty,
 ffmpeg), then <code>python3 docs/demos/scripts/page.py</code>.</p>
-</main></body>
+</main>
+<script>
+(async () => {
+  const c = window.claude && await window.claude.use("comments");
+  if (!c) return;
+  document.querySelectorAll('.commenting').forEach(p => p.hidden = false);
+  document.querySelectorAll('article .cbtn').forEach(b => {
+    b.hidden = false;
+    b.addEventListener('click', async () => {
+      try { await c.openComposer({ element: b.closest('article') }); }
+      catch (e) { if (e && (e.code === 'unavailable' || e.code === 'not_granted')) document.querySelectorAll('.cbtn').forEach(x => x.hidden = true); }
+    });
+  });
+})();
+</script>
+</body>
 </html>
 '''
 
