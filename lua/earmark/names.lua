@@ -52,6 +52,48 @@ function M.known(buf, value)
   return #M.history(buf, value) > 0
 end
 
+--- Whether this label has a name in this document or this project (the global history
+--- only pre-fills the prompt).
+function M.known_here(buf, value)
+  for _, h in ipairs(M.history(buf, value)) do
+    if h.source == 'this file' or h.source == 'project' or h.source == 'label' then return true end
+  end
+  return false
+end
+
+--- The first time a label is used in a document that has no name for it, give it the
+--- project's name ("directory default"): naming label 3 in one file names it in the
+--- project's other files too. A name cleared in this file stays cleared while the label is
+--- in use here.
+function M.adopt(buf, ids)
+  local pf = project_file(buf)
+  if not pf then return end
+  local doc = buffer.names(buf)
+  local changed = {}
+  for _, id in ipairs(ids) do
+    changed[id] = true
+  end
+  local used = {} -- labels on annotations other than the changed ones
+  for _, x in ipairs(buffer.list(buf)) do
+    if not changed[x.annotation.id] then
+      for _, v in ipairs(x.annotation.values) do
+        used[key(v)] = true
+      end
+    end
+  end
+  for id in pairs(changed) do
+    local a = buffer.annotation(buf, id)
+    for _, v in ipairs(a and a.values or {}) do
+      local k = key(v)
+      if not doc[k] and not used[k] then
+        local name = store.mru_get(pf, k)[1]
+        if name then buffer.rename_label(buf, v, name) end
+        used[k] = true
+      end
+    end
+  end
+end
+
 --- Name a label in this document and remember the name in both histories. An empty name
 --- clears the document's name (histories keep it for later).
 function M.save(buf, value, name)

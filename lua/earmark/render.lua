@@ -223,6 +223,7 @@ local function eol_from(S, items, row)
       chunks[#chunks + 1] = { empty, fg }
     end
     local list, idents = tags.of(it.a)
+    if not o.tags then list, idents = {}, {} end
     for _, t in ipairs(list) do
       if not seen_tag[t] then
         seen_tag[t] = true
@@ -383,18 +384,16 @@ function M.setup()
   api.nvim_set_decoration_provider(M.ns, { on_win = on_win })
 end
 
---- `<leader>mv`: indicators on/off. Only changes how things look; nothing is re-read or
---- re-saved.
+--- `<leader>mv`: show or hide #tags and [identifiers] at the ends of lines (pencils stay).
+--- Only changes how things look; nothing is re-read or re-saved.
 function M.toggle_indicators()
   local o = ind_opts()
-  o.mode = o.mode == 'eol' and 'none' or 'eol'
-  if o.mode == 'none' then
-    for buf in pairs(virt) do
-      M.clear_lines(buf)
-    end
+  o.tags = not o.tags
+  for buf in pairs(virt) do
+    M.clear_lines(buf)
   end
   vim.cmd('redraw!')
-  vim.notify('earmark: indicators ' .. (o.mode == 'eol' and 'on' or 'off'))
+  vim.notify('earmark: tags ' .. (o.tags and 'shown' or 'hidden'))
 end
 
 --- Turn drawing back on for a buffer (after an error).

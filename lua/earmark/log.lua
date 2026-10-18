@@ -68,14 +68,23 @@ function M.show()
     lines[#lines + 1] = ''
     vim.list_extend(lines, file_lines, math.max(1, #file_lines - 99))
   end
-  vim.cmd('botright new')
-  local buf = vim.api.nvim_get_current_buf()
+  -- reuse the log window if it is open, so a second :Earmark log refreshes it
+  local buf = vim.fn.bufnr('earmark://log')
+  local win = buf > 0 and vim.fn.bufwinid(buf) or -1
+  if win > 0 then
+    vim.api.nvim_set_current_win(win)
+  else
+    if buf > 0 then pcall(vim.api.nvim_buf_delete, buf, { force = true }) end
+    vim.cmd('botright new')
+    buf = vim.api.nvim_get_current_buf()
+    vim.bo[buf].buftype = 'nofile'
+    vim.bo[buf].bufhidden = 'wipe'
+    vim.bo[buf].filetype = 'markdown'
+    vim.api.nvim_buf_set_name(buf, 'earmark://log')
+  end
+  vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].buftype = 'nofile'
-  vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].modifiable = false
-  vim.bo[buf].filetype = 'markdown'
-  vim.api.nvim_buf_set_name(buf, 'earmark://log')
 end
 
 return M

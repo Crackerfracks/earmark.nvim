@@ -8,17 +8,21 @@ local sets = require('earmark.sets')
 local api = vim.api
 local M = {}
 
-local defined = {} -- group -> fg
-local function stl_bg()
-  local ok, hl = pcall(api.nvim_get_hl, 0, { name = 'StatusLine', link = false })
-  return ok and hl.bg or nil
+local defined = {} -- group -> fg..host
+
+local function bg_of(host)
+  local ok, hl = pcall(api.nvim_get_hl, 0, { name = host or 'StatusLine', link = false })
+  if ok and hl.bg then return hl.bg end
+  if host then return bg_of(nil) end
 end
 
---- Foreground-only statusline group in colour `hex` (keeps the statusline background).
-local function group(name, hex, bold)
-  local key = hex .. (bold and 'b' or '')
+--- Statusline group in colour `hex` on the background of `host` (the statusline section
+--- earmark sits in; default StatusLine), so it never leaves a patch of another colour.
+local function group(name, hex, host, bold)
+  if host then name = name .. '_' .. host:gsub('[^%w_]', '') end
+  local key = tostring(hex) .. (bold and 'b' or '') .. (host or '')
   if defined[name] ~= key then
-    api.nvim_set_hl(0, name, { fg = hex, bg = stl_bg(), bold = bold or nil })
+    api.nvim_set_hl(0, name, { fg = hex, bg = bg_of(host), bold = bold or nil })
     defined[name] = key
   end
   return name
@@ -26,8 +30,6 @@ end
 
 function M.apply_highlights()
   defined = {}
-  local bg = stl_bg()
-  api.nvim_set_hl(0, 'EarmarkStlName', { default = true, bold = true, bg = bg })
 end
 
 local function esc(s)
@@ -35,8 +37,14 @@ local function esc(s)
 end
 
 --- Statusline text for the current buffer ('' when it has no annotations state).
---- `next_value` is the label the next `gh` would use.
-function M.render(next_value)
+--- `next_value` is the label the next `gh` would use. opts.hl: the highlight group of the
+--- section the string goes in; colours sit on its background and it is restored after them.
+function M.render(next_value, opts)
+  local host = opts and opts.hl
+  local reset = host and ('%#' .. host .. '#') or '%*'
+  local function hl(name, hex, bold)
+    return '%#' .. group(name, hex, host, bold) .. '#'
+  end
   local buf = api.nvim_get_current_buf()
   local S = buffer.state[buf]
   if not S then return '' end
@@ -48,10 +56,13 @@ function M.render(next_value)
   local parts = {}
   if v then
     local hex = sets.color(v, S.colors)
-    if hex then parts[#parts + 1] = '%#' .. group('EarmarkStlSwatch' .. hex:sub(2), hex) .. '#▍%*' end
+    if hex then parts[#parts + 1] = hl('EarmarkStlSwatch' .. hex:sub(2), hex) .. '▍' .. reset end
     parts[#parts + 1] = esc(v.set .. '·' .. v.label)
     local name = buffer.display_name(buf, v)
-    if name ~= v.label then parts[#parts + 1] = '%#EarmarkStlName#' .. esc(name) .. '%*' end
+    if name ~= v.label then
+      local fg = (api.nvim_get_hl(0, { name = host or 'StatusLine', link = false }).fg)
+      parts[#parts + 1] = hl('EarmarkStlName', fg and ('#%06x'):format(fg) or nil, true) .. esc(name) .. reset
+    end
   end
   local n, notes, warn = 0, 0, 0
   for _, a in pairs(S.annos) do
@@ -68,9 +79,9 @@ function M.render(next_value)
     for k = 1, 10 do
       local l = set.by_key[tostring(k)]
       local digit = tostring(k % 10)
-      d[#d + 1] = l and ('%#' .. group('EarmarkStlDigit' .. k, l.color) .. '#' .. digit) or digit
+      d[#d + 1] = l and (hl('EarmarkStlDigit' .. k, l.color) .. digit) or digit
     end
-    parts[#parts + 1] = table.concat(d) .. '%*'
+    parts[#parts + 1] = table.concat(d) .. reset
   end
   return table.concat(parts, ' ')
 end

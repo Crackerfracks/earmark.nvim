@@ -141,4 +141,16 @@ T['copying a file does not take over its record; saveas moves it'] = function()
   eq(docs[1]:match('[^/]+$'), 'moved.md.json')
 end
 
+T['snapshot paths outside a project'] = function()
+  local r = child.lua_get([[(function()
+    local store, dir = require('earmark.store'), require('earmark.config').options.storage_dir
+    return {
+      store.snap_path(dir .. '/files/home/me/files/notes.md.json') == dir .. '/snap/files/home/me/files/notes.md.snap',
+      store.snap_path(dir .. '/scratch/abc.json') == dir .. '/snap/scratch/abc.snap',
+      store.snap_path('/p/.earmark/docs/a/b.md.json') == '/p/.earmark/snap/a/b.md.snap',
+    }
+  end)()]])
+  eq(r, { true, true, true })
+end
+
 return T

@@ -166,7 +166,15 @@ function M.run(buf)
     if not ok then
       return vim.notify('earmark: could not write ' .. path .. ': ' .. tostring(err), vim.log.levels.ERROR)
     end
-    vim.cmd('vsplit ' .. vim.fn.fnameescape(path))
+    local open = vim.fn.bufnr(path)
+    local win = open > 0 and vim.fn.bufwinid(open) or -1
+    if win > 0 then
+      api.nvim_set_current_win(win)
+    else
+      vim.cmd('vsplit ' .. vim.fn.fnameescape(path))
+    end
+    -- an export opened earlier: show what was just written
+    if open > 0 and not vim.bo.modified then vim.cmd('silent edit!') end
     vim.notify(('earmark: exported %d to %s'):format(n, vim.fn.fnamemodify(path, ':~:.')))
   end)
 end

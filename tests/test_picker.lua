@@ -115,8 +115,8 @@ T['the review list re-attaches a detached annotation to a selection'] = function
   want('quick', 'Attach')
   child.type_keys(' md')
   eq(#offered(1), 1)
-  eq(child.lua_get('_G.msgs[#_G.msgs]'), 'earmark: select the text it belongs to, then run :Earmark reanchor')
-  child.type_keys('v', 'e', ':Earmark reanchor<CR>') -- select "brown"
+  eq(child.lua_get('_G.msgs[#_G.msgs]'), 'earmark: select the text it belongs to, then press <leader>mR')
+  child.type_keys('v', 'e', ' mR') -- select "brown"
   local a = child.lua_get('require("earmark.buffer").annotation(0, ...)', { id })
   eq(a.status, 'stale') -- "brown" is not "quick"
   eq(child.lua_get('_G.texts()'), { { text = 'brown', label = '1', status = 'stale' } })

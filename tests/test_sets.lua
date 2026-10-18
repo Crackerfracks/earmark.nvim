@@ -168,6 +168,13 @@ T['statusline shows the next label, counts and coloured digits'] = function()
   -- digit groups have no background of their own beyond the statusline's
   local d = child.lua_get('vim.api.nvim_get_hl(0, { name = "EarmarkStlDigit3" })')
   eq(d.bg, child.lua_get('vim.api.nvim_get_hl(0, { name = "StatusLine", link = false }).bg'))
+  -- inside a section with its own background: colours keep it, and it is restored after
+  child.lua('vim.api.nvim_set_hl(0, "Sec", { fg = "#ffffff", bg = "#123456" })')
+  s = child.lua_get('require("earmark").statusline({ hl = "Sec" })')
+  eq(s:find('%*', 1, true), nil)
+  eq(s:find('%#EarmarkStlDigit3_Sec#3', 1, true) ~= nil, true)
+  eq(s:sub(-6), '%#Sec#')
+  eq(child.lua_get('vim.api.nvim_get_hl(0, { name = "EarmarkStlDigit3_Sec" }).bg'), 0x123456)
   -- buffers without earmark state: empty
   child.cmd('enew')
   eq(child.lua_get('require("earmark").statusline()'), '')

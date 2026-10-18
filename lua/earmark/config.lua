@@ -36,7 +36,7 @@ M.defaults = {
     peek = '<leader>mi', -- show the hover now and enter it (scroll, q closes)
     note = '<leader>mm', -- open/close the note of the annotation under the cursor
     toggle_hover = '<leader>mh',
-    toggle_indicators = '<leader>mv',
+    toggle_indicators = '<leader>mv', -- show/hide #tags at the ends of lines
     tags = '<leader>mt', -- add/remove tags of the annotation under the cursor
     next_same = '<leader>m]', -- next/previous with the label under the cursor
     prev_same = '<leader>m[',
@@ -44,6 +44,8 @@ M.defaults = {
     pick = '<leader>mp', -- annotations in this file
     pick_all = '<leader>mP', -- annotations in the project
     review = '<leader>md', -- stale, ambiguous and detached annotations
+    reanchor = '<leader>mR', -- {Visual}: attach the annotation chosen in the review list here
+    qf = '<leader>mq', -- this file's annotations into the quickfix list
     diff = '<leader>mD', -- original vs current text of the annotation under the cursor
     export = '<leader>me', -- Markdown export of this file's annotations
     occurrences = '<leader>mo', -- annotate every other occurrence of the text under the cursor
@@ -86,7 +88,8 @@ M.defaults = {
   -- and [identifiers], in the label's colour. Lines too long for them get them on a
   -- virtual line below.
   indicators = {
-    mode = 'eol', -- 'eol' | 'none' (`<leader>mv` toggles)
+    mode = 'eol', -- 'eol' | 'none' (nothing at all)
+    tags = false, -- show #tags and [identifiers] too (`<leader>mv` toggles)
     max_pencils = 3, -- then "+N"
     identifiers = true, -- show @ident tags as [ident]
     show_empty = false, -- a dot for annotations without a note

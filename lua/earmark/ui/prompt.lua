@@ -309,8 +309,16 @@ local function enter_name_stage(P, value, back_ok)
   render(P)
 end
 
+--- Apply the label chosen before the name stage, without naming it.
+local function skip_name(P)
+  local value = P.value
+  finish(P, function()
+    P.on_accept(value, nil)
+  end)
+end
+
 local function finish_value(P, value)
-  if P.should_name and P.should_name(value) then
+  if P.want_name or (P.should_name and P.should_name(value)) then
     P.asked_name = true
     return enter_name_stage(P, value, true)
   end
@@ -402,8 +410,15 @@ local function on_text_changed(P)
   if P.moving then
     P.moving = false
   elseif P.stage == 'label' then
-    P.cands = label_cands(P, input_text(P))
+    local text = input_text(P)
+    P.cands = label_cands(P, text)
     P.sel = 1
+    if #P.cands == 0 and text:match('^%d%d%d+$') then
+      -- a third digit replaces the oldest: "34" then "3" reads as "43"
+      return vim.schedule(function()
+        if api.nvim_buf_is_valid(P.buf) then set_input(P, text:sub(-2)) end
+      end)
+    end
   elseif P.stage == 'choice' then
     P.choices = choice_cands(P, input_text(P))
     P.sel = 1
@@ -421,13 +436,20 @@ local function keymaps(P)
     accept(P)
   end)
   map({ 'i', 'n' }, '<Tab>', function()
-    if P.stage == 'label' then
-      local v = current_value(P)
-      if v then enter_name_stage(P, v, true) end
-    else
-      accept(P)
-    end
+    -- like <CR> (choices and text are still asked for), then the name
+    if P.stage ~= 'name' then P.want_name = true end
+    accept(P)
   end)
+  -- <Esc> while naming a label that was chosen already: keep the label, skip the name
+  vim.keymap.set('i', '<Esc>', function()
+    if P.stage == 'name' and P.asked_name then
+      vim.schedule(function()
+        skip_name(P)
+      end)
+      return ''
+    end
+    return '<Esc>'
+  end, { buffer = P.buf, nowait = true, silent = true, expr = true })
   local function back_to_label()
     P.stage = 'label'
     set_input(P, P.label_text or '')
@@ -480,6 +502,7 @@ local function keymaps(P)
     render(P)
   end)
   map('n', '<Esc>', function()
+    if P.stage == 'name' and P.asked_name then return skip_name(P) end
     cancel(P)
   end)
   map('n', 'q', function()
@@ -556,17 +579,22 @@ function M.open(opts)
       on_text_changed(P)
     end,
   })
-  api.nvim_create_autocmd({ 'BufLeave', 'WinLeave' }, {
+  api.nvim_create_autocmd('WinLeave', {
     group = group,
     buffer = P.buf,
     callback = function()
-      if not P.closing then
+      if P.closing then return end
+      place.on_leave(P.win, function()
+        if P.closing then return end
         P.closing = true
-        vim.schedule(function()
-          close(P)
-          if P.on_cancel then P.on_cancel() end
-        end)
-      end
+        close(P)
+        -- a label already chosen is kept; only the name is skipped
+        if P.stage == 'name' and P.asked_name then
+          P.on_accept(P.value, nil)
+        elseif P.on_cancel then
+          P.on_cancel()
+        end
+      end)
     end,
   })
   if opts.stage == 'name' then
