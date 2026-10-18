@@ -12,6 +12,8 @@
 --      recorded prefix/suffix (handles moved blocks and whole-buffer rewrites).
 --   4. Otherwise keep the mapped span if non-empty (the text was edited in place).
 --   5. Otherwise, a long-enough unique quote is accepted anywhere; else the span is lost.
+local diff = require('earmark.compat').diff
+
 local M = {}
 
 ---------------------------------------------------------------------------
@@ -72,7 +74,7 @@ end
 --- Hunks of a diff between two token lists: {a_start, a_count, b_start, b_count}, 1-based.
 local function token_hunks(a, b)
   if #a == 0 and #b == 0 then return {} end
-  return vim.diff(token_doc(a), token_doc(b), { result_type = 'indices', algorithm = 'myers' })
+  return diff(token_doc(a), token_doc(b), { result_type = 'indices', algorithm = 'myers' })
 end
 
 --- Similarity in [0, 1] between two strings (2 * matched chars / total chars).
@@ -229,7 +231,7 @@ function M.reanchor(old_lines, new_lines, items)
     end
     return table.concat(out, '\n') .. '\n'
   end
-  local line_hunks = vim.diff(norm(old_lines), norm(new_lines), { result_type = 'indices', algorithm = 'histogram' })
+  local line_hunks = diff(norm(old_lines), norm(new_lines), { result_type = 'indices', algorithm = 'histogram' })
   local seg_cache = {}
 
   -- Map offset `off` (0-based, in old text) inside the old segment [a_base, a_base + #a_str)
@@ -324,6 +326,32 @@ function M.reanchor(old_lines, new_lines, items)
     else
       result[it.id] = false
     end
+  end
+  return result
+end
+
+--- Re-anchor items without a snapshot of the text they were recorded against (the
+--- snapshot is missing, e.g. a fresh clone of a repo with a committed `.earmark/`).
+--- Positions are only hints: a span is kept where it was if its text still equals the
+--- quote, else the quote is searched for with its context.
+--- @return table<string, {s: integer[], e: integer[], how: string}|false>
+function M.reanchor_by_quote(new_lines, items)
+  local t = M.text(new_lines)
+  local result = {}
+  for _, it in ipairs(items) do
+    local placed
+    if it.s and it.e and it.s[1] < #new_lines and M.span_text(t, it.s, it.e) == it.quote then
+      placed = { s = it.s, e = it.e, how = 'same' }
+    else
+      local near = it.s and M.pos_to_off(t, it.s[1], it.s[2]) or nil
+      local so, eo = M.locate(t, it, near)
+      if so then
+        local sr, sc = M.off_to_pos(t, so)
+        local er, ec = M.off_to_pos(t, eo)
+        placed = { s = { sr, sc }, e = { er, ec }, how = 'relocated' }
+      end
+    end
+    result[it.id] = placed or false
   end
   return result
 end

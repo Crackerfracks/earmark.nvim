@@ -22,6 +22,7 @@ M.defaults = {
     operator = 'gh', -- gh{motion}, {Visual}gh; a count picks the label: 3ghiw
     line = 'ghh',
     erase = '<leader>mx', -- under cursor (Normal) / in selection (Visual)
+    clear = '<leader>mX', -- erase everything in the buffer (restorable)
     restore = '<leader>mu', -- restore the most recently erased
     next = '<leader>mn',
     prev = '<leader>mN',

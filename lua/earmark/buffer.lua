@@ -7,6 +7,7 @@
 -- the snapshot against the current text.
 local anchor = require('earmark.anchor')
 local config = require('earmark.config')
+local log = require('earmark.log')
 local sets = require('earmark.sets')
 local store = require('earmark.store')
 
@@ -17,12 +18,17 @@ M.ns = api.nvim_create_namespace('earmark')
 
 --- @class earmark.Annotation
 --- @field id string
---- @field values {set: string, label: string}[]
+--- @field values {set: string, label: string, choice: string?, text: string?}[]
 --- @field quote string            text of the span when last seen
 --- @field prefix string
 --- @field suffix string
 --- @field original_quote string   text when first annotated
---- @field status 'ok'|'stale'|'detached'
+--- @field status 'ok'|'stale'|'ambiguous'|'detached'
+--- @field note string?            markdown note
+--- @field tags string[]?          explicit tags (tags written in the note are parsed, not stored)
+--- @field score number?           confidence of the last re-anchoring (absent = exact)
+--- @field how string?             how it was last re-anchored
+--- @field zk string?              path of a zk note this annotation was promoted to
 --- @field created integer
 --- @field updated integer
 --- @field s integer[]?            last known start (snapshot coordinates)
@@ -32,6 +38,9 @@ M.ns = api.nvim_create_namespace('earmark')
 --- @field doc earmark.Doc
 --- @field annos table<string, earmark.Annotation>
 --- @field ext table<string, integer>   annotation id -> extmark id
+--- @field by_ext table<integer, string> extmark id -> annotation id
+--- @field names table<string, string>  "set/key" -> name of that label in this doc
+--- @field colors table<string, string> "set/key" -> colour override in this doc
 --- @field snap {lines: string[], pos: table<string, {s: integer[], e: integer[]}>}
 --- @field trash table[]
 --- @field readonly string?             reason saving is disabled (unreadable record)
@@ -43,13 +52,15 @@ local function now()
   return os.time()
 end
 
+--- Fire `User EarmarkChanged` and the specific `User Earmark<Action>` event.
 local function emit(buf, action, ids)
-  api.nvim_exec_autocmds('User', {
-    pattern = 'EarmarkChanged',
-    modeline = false,
-    data = { buf = buf, action = action, ids = ids },
-  })
+  local data = { buf = buf, action = action, ids = ids }
+  for _, pattern in ipairs({ 'EarmarkChanged', 'Earmark' .. action:sub(1, 1):upper() .. action:sub(2) }) do
+    local ok, err = pcall(api.nvim_exec_autocmds, 'User', { pattern = pattern, modeline = false, data = data })
+    if not ok then log.error('User %s handler: %s', pattern, err) end
+  end
 end
+M.emit = emit
 
 local function bufnr(buf)
   return (buf == nil or buf == 0) and api.nvim_get_current_buf() or buf
@@ -74,7 +85,7 @@ local function render(buf, S, a, s, e)
   local opts = {
     end_row = e[1],
     end_col = e[2],
-    hl_group = sets.group(a.values[1]),
+    hl_group = sets.group(a.values[1], S.colors, a.status),
     priority = priority(s, e),
     invalidate = true,
     undo_restore = true,
@@ -86,11 +97,13 @@ local function render(buf, S, a, s, e)
     local m = api.nvim_buf_get_extmark_by_id(buf, M.ns, old, { details = true })
     if m[3] and m[3].invalid then
       api.nvim_buf_del_extmark(buf, M.ns, old)
+      S.by_ext[old] = nil
     else
       opts.id = old
     end
   end
-  S.ext[a.id] = api.nvim_buf_set_extmark(buf, M.ns, s[1], s[2], opts)
+  local ext = api.nvim_buf_set_extmark(buf, M.ns, s[1], s[2], opts)
+  S.ext[a.id], S.by_ext[ext] = ext, a.id
 end
 
 --- Current {s, e} of an annotation from its extmark, or nil if it is broken
@@ -105,16 +118,28 @@ local function live_pos(buf, S, id)
   return s, e
 end
 
-local function detach(buf, S, a)
-  if S.ext[a.id] then
-    pcall(api.nvim_buf_del_extmark, buf, M.ns, S.ext[a.id])
-    S.ext[a.id] = nil
+local function drop_ext(buf, S, id)
+  local ext = S.ext[id]
+  if ext then
+    pcall(api.nvim_buf_del_extmark, buf, M.ns, ext)
+    S.ext[id], S.by_ext[ext] = nil, nil
   end
+end
+
+local function detach(buf, S, a)
+  drop_ext(buf, S, a.id)
   a.status = 'detached'
 end
 
 local function status_for(a, text)
   return anchor.similarity(text, a.original_quote) >= config.options.stale_threshold and 'ok' or 'stale'
+end
+
+--- Record how a re-anchoring placed an annotation (score/how are omitted when exact).
+local function set_placement(a, r)
+  a.how = (r.how and r.how ~= 'same' and r.how ~= 'mapped') and r.how or nil
+  a.score = (r.score and r.score < 1) and r.score or nil
+  if r.ambiguous then a.status = 'ambiguous' end
 end
 
 ---------------------------------------------------------------------------
@@ -168,6 +193,7 @@ function M.repair(buf, S)
     for _, it in ipairs(broken) do
       local a, r = S.annos[it.id], res[it.id]
       if r then
+        set_placement(a, r)
         render(buf, S, a, r.s, r.e)
       else
         detach(buf, S, a)
@@ -185,7 +211,7 @@ function M.repair(buf, S)
       if so then
         local sr, sc = anchor.off_to_pos(t, so)
         local er, ec = anchor.off_to_pos(t, eo)
-        a.status = 'ok'
+        a.status = status_for(a, t.str:sub(so + 1, eo))
         render(buf, S, a, { sr, sc }, { er, ec })
         changed = true
       end
@@ -221,6 +247,11 @@ local function serialize(a)
     suffix = a.suffix,
     original_quote = a.original_quote,
     status = a.status,
+    note = (a.note and a.note ~= '') and a.note or nil,
+    tags = (a.tags and #a.tags > 0) and a.tags or nil,
+    score = a.score,
+    how = a.how,
+    zk = a.zk,
     created = a.created,
     updated = a.updated,
   }
@@ -245,8 +276,11 @@ function M.save(buf)
   for _, a in pairs(S.annos) do
     list[#list + 1] = serialize(a)
   end
-  if #list == 0 and #S.trash == 0 then
-    if vim.uv.fs_stat(S.doc.record) then store.write(S.doc.record, nil) end
+  if #list == 0 and #S.trash == 0 and next(S.names) == nil and next(S.colors) == nil then
+    if vim.uv.fs_stat(S.doc.record) then
+      store.write(S.doc.record, nil)
+      store.write_snapshot(S.doc.snap, nil)
+    end
     return
   end
   table.sort(list, by_position)
@@ -254,11 +288,16 @@ function M.save(buf)
     version = store.VERSION,
     doc = { kind = S.doc.kind, key = S.doc.key, name = api.nvim_buf_get_name(buf), filetype = vim.bo[buf].filetype },
     fingerprint = store.fingerprint(S.snap.lines),
-    snapshot = S.snap.lines,
     annotations = list,
     trash = S.trash,
+    names = next(S.names) and S.names or nil,
+    colors = next(S.colors) and S.colors or nil,
   })
-  if not ok then vim.notify('earmark: could not save ' .. S.doc.record .. ': ' .. tostring(err), vim.log.levels.ERROR) end
+  if ok then ok, err = store.write_snapshot(S.doc.snap, S.snap.lines) end
+  if not ok then
+    log.error('could not save %s: %s', S.doc.record, tostring(err))
+    vim.notify('earmark: could not save ' .. S.doc.record .. ': ' .. tostring(err), vim.log.levels.ERROR)
+  end
 end
 
 function M.schedule_save(buf)
@@ -281,9 +320,11 @@ local function load(buf, S)
   local rec, err = store.read(S.doc.record)
   if err then
     S.readonly = err
+    log.warn('%s (annotations for this buffer will not be saved)', err)
     vim.notify('earmark: ' .. err .. ' (annotations for this buffer will not be saved)', vim.log.levels.WARN)
     return
   end
+  local snap_path = S.doc.snap
   local lines = lines_of(buf)
   if not rec and S.doc.kind == 'file' and not (#lines == 1 and lines[1] == '') then
     local moved = store.find_renamed(S.doc, lines)
@@ -291,12 +332,16 @@ local function load(buf, S)
       rec = store.read(moved)
       if rec then
         S.moved_from = moved
+        snap_path = store.snap_path(moved)
         vim.notify('earmark: annotations followed a renamed file (' .. vim.fs.basename(moved) .. ')')
       end
     end
   end
   if not rec then return end
   S.trash = rec.trash or {}
+  S.names = type(rec.names) == 'table' and rec.names or {}
+  S.colors = type(rec.colors) == 'table' and rec.colors or {}
+  local snapshot = store.read_snapshot(snap_path, rec)
   local items = {}
   for _, a in ipairs(rec.annotations or {}) do
     S.annos[a.id] = a
@@ -306,23 +351,33 @@ local function load(buf, S)
       a.status = 'detached'
     end
   end
-  local res = anchor.reanchor(rec.snapshot or {}, lines, items)
+  local res
+  if snapshot then
+    res = anchor.reanchor(snapshot, lines, items)
+  else
+    res = anchor.reanchor_by_quote(lines, items)
+  end
   for _, it in ipairs(items) do
     local a, r = S.annos[it.id], res[it.id]
     if r then
+      set_placement(a, r)
       render(buf, S, a, r.s, r.e)
     else
       a.status = 'detached'
     end
   end
-  S.snap = { lines = rec.snapshot or {}, pos = {} }
+  S.snap = { lines = snapshot or {}, pos = {} }
   M.repair(buf, S) -- re-attach anything detached whose text is present
   M.refresh_snapshot(buf, S)
   if S.moved_from then
     M.save(buf)
     store.write(S.moved_from, nil)
+    store.write_snapshot(store.snap_path(S.moved_from), nil)
     S.moved_from = nil
+  elseif (rec.version or 1) < store.VERSION then
+    M.save(buf) -- migrate the record to the current schema
   end
+  emit(buf, 'load', nil)
 end
 
 --- State for a buffer, created (and loaded from disk) on first use. Nil if the buffer
@@ -335,7 +390,7 @@ function M.get(buf, opts)
   if opts and opts.no_create then return nil end
   local doc = store.doc(buf)
   if not doc then return nil end
-  S = { doc = doc, annos = {}, ext = {}, snap = { lines = {}, pos = {} }, trash = {} }
+  S = { doc = doc, annos = {}, ext = {}, by_ext = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
   M.state[buf] = S
   if api.nvim_buf_is_loaded(buf) then
     load(buf, S)
@@ -371,11 +426,12 @@ function M.rename(buf)
   if not S then return end
   local doc = store.doc(buf)
   if not doc or doc.record == S.doc.record then return end
-  local old = S.doc.record
+  local old = S.doc
   M.refresh_snapshot(buf, S)
   S.doc = doc
   M.save(buf)
-  store.write(old, nil)
+  store.write(old.record, nil)
+  store.write_snapshot(old.snap, nil)
 end
 
 ---------------------------------------------------------------------------
@@ -391,6 +447,8 @@ function M.add(buf, s, e, value)
   for id, a in pairs(S.annos) do
     local ls, le = live_pos(buf, S, id)
     if ls and ls[1] == s[1] and ls[2] == s[2] and le[1] == e[1] and le[2] == e[2] then
+      local v1 = a.values[1]
+      if v1.set == value.set and v1.label == value.label and v1.choice == value.choice then return a end
       a.values[1] = value
       a.updated = now()
       render(buf, S, a, s, e)
@@ -429,14 +487,22 @@ end
 function M.find(buf, s, e)
   local S = M.get(buf, { no_create = true })
   if not S then return {} end
+  local point = e == nil
   e = e or { s[1], s[2] + 1 }
   local function before(p, q)
     return p[1] < q[1] or (p[1] == q[1] and p[2] < q[2])
   end
+  -- A cursor past the last character (empty line, end of line in Insert or with
+  -- 'virtualedit') still belongs to a span that ends right there.
+  local eol = false
+  if point then
+    local line = api.nvim_buf_get_lines(buf, s[1], s[1] + 1, false)[1] or ''
+    eol = s[2] >= #line
+  end
   local hits = {}
   for id, a in pairs(S.annos) do
     local as, ae = live_pos(buf, S, id)
-    if as and before(as, e) and before(s, ae) then
+    if as and before(as, e) and (before(s, ae) or (eol and ae[1] == s[1] and ae[2] == s[2] and before(as, s))) then
       hits[#hits + 1] = { a = a, s = as, e = ae, size = priority(as, ae) }
     end
   end
@@ -458,8 +524,8 @@ function M.erase(buf, ids)
       local entry = serialize(a)
       entry.erased, entry.batch = t, batch
       S.trash[#S.trash + 1] = entry
-      if S.ext[id] then api.nvim_buf_del_extmark(buf, M.ns, S.ext[id]) end
-      S.ext[id], S.annos[id], S.snap.pos[id] = nil, nil, nil
+      drop_ext(buf, S, id)
+      S.annos[id], S.snap.pos[id] = nil, nil
     end
   end
   while #S.trash > 500 do
@@ -506,6 +572,97 @@ function M.restore(buf)
   return #ids, missing
 end
 
+---------------------------------------------------------------------------
+-- Annotation edits (the single write path for notes, tags, values and names)
+---------------------------------------------------------------------------
+
+--- The annotation with this id in a buffer, or nil.
+function M.annotation(buf, id)
+  local S = M.get(buf, { no_create = true })
+  return S and S.annos[id] or nil
+end
+
+local function touch(buf, S, a, action)
+  a.updated = now()
+  M.schedule_save(buf)
+  emit(buf, action, { a.id })
+end
+
+--- Set (or clear, with nil or '') the note of an annotation.
+function M.set_note(buf, id, text)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  local a = S and S.annos[id]
+  if not a then return false end
+  text = (text and text:match('%S')) and text or nil
+  if a.note == text then return true end
+  a.note = text
+  touch(buf, S, a, 'note')
+  return true
+end
+
+--- Replace the explicit tags of an annotation.
+function M.set_tags(buf, id, tags)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  local a = S and S.annos[id]
+  if not a then return false end
+  local seen, list = {}, {}
+  for _, t in ipairs(tags or {}) do
+    if t ~= '' and not seen[t] then
+      seen[t], list[#list + 1] = true, t
+    end
+  end
+  a.tags = #list > 0 and list or nil
+  touch(buf, S, a, 'update')
+  return true
+end
+
+--- Replace the values of an annotation (the first one colours it).
+function M.set_values(buf, id, values)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  local a = S and S.annos[id]
+  if not a or not values or #values == 0 then return false end
+  a.values = values
+  local s, e = live_pos(buf, S, id)
+  if s then render(buf, S, a, s, e) end
+  touch(buf, S, a, 'update')
+  return true
+end
+
+local function label_key(value)
+  return value.set .. '/' .. value.label
+end
+M.label_key = label_key
+
+--- Name a label for this document (nil or '' clears the name).
+function M.rename_label(buf, value, name)
+  buf = bufnr(buf)
+  local S = M.get(buf)
+  if not S then return false end
+  name = (name and name:match('%S')) and vim.trim(name) or nil
+  S.names[label_key(value)] = name
+  M.schedule_save(buf)
+  emit(buf, 'update', nil)
+  return true
+end
+
+--- Names given to labels in this document: { ["set/key"] = name }.
+function M.names(buf)
+  local S = M.get(buf, { no_create = true })
+  return S and S.names or {}
+end
+
+--- Display name of a value in a buffer: the doc's name for it, else the label's name.
+function M.display_name(buf, value)
+  local S = M.get(buf, { no_create = true })
+  local n = S and S.names[label_key(value)]
+  if n then return n end
+  local l = sets.label(value)
+  return l and l.name or value.label
+end
+
 --- Live annotations with positions, sorted by position (detached ones last, no position).
 function M.list(buf)
   local S = M.get(buf, { no_create = true })
@@ -535,5 +692,7 @@ function M.rerender(buf)
     if s then render(buf, S, a, s, e) end
   end
 end
+
+M.live_pos = live_pos
 
 return M

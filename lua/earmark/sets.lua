@@ -19,7 +19,10 @@ M.order = {} --- @type string[]
 M.by_name = {} --- @type table<string, earmark.Set>
 M.current = nil --- @type string?
 
-local group_ids = {} -- "set\0key" -> group name
+-- Highlight groups are created lazily, the first time a label is drawn, and re-applied on
+-- ColorScheme. Variants: a doc colour override, and the stale/ambiguous looks.
+local groups = {} -- group name -> { bg = hex, style = nil|'stale'|'ambiguous' }
+local group_ids = {} -- "set\0key" -> base group name
 local n_groups = 0
 
 local function group_for(set, key)
@@ -29,6 +32,26 @@ local function group_for(set, key)
     group_ids[k] = 'EarmarkLabel' .. n_groups
   end
   return group_ids[k]
+end
+
+local function define(name, spec)
+  local hl = { bg = spec.bg, fg = color.contrast_fg(spec.bg) }
+  if spec.style == 'stale' then
+    hl.underdashed, hl.sp = true, hl.fg
+  elseif spec.style == 'ambiguous' then
+    hl.underdotted, hl.sp = true, hl.fg
+  end
+  vim.api.nvim_set_hl(0, name, hl)
+end
+
+--- Highlight group with background `bg` and an optional status style, created on demand.
+local function ensure(name, bg, style)
+  local g = groups[name]
+  if not g or g.bg ~= bg then
+    groups[name] = { bg = bg, style = style }
+    define(name, groups[name])
+  end
+  return name
 end
 
 local function numbered(name, palette)
@@ -88,10 +111,8 @@ function M.load(opts)
 end
 
 function M.apply_highlights()
-  for _, set in pairs(M.by_name) do
-    for _, l in ipairs(set.labels) do
-      vim.api.nvim_set_hl(0, l.group, { bg = l.color, fg = color.contrast_fg(l.color), default = false })
-    end
+  for name, spec in pairs(groups) do
+    define(name, spec)
   end
   -- annotations whose label no longer exists
   vim.api.nvim_set_hl(0, 'EarmarkUnknown', { default = true, link = 'Visual' })
@@ -103,9 +124,35 @@ function M.label(value)
   return set and set.by_key[value.label] or nil
 end
 
-function M.group(value)
+--- Colour of a value: a doc override (`colors`, "set/key" -> hex) or the label's colour.
+function M.color(value, colors)
+  local o = colors and value and colors[value.set .. '/' .. value.label]
+  if o then return o end
   local l = M.label(value)
-  return l and l.group or 'EarmarkUnknown'
+  return l and l.color or nil
+end
+
+--- Highlight group for a value. `colors` are the doc's overrides; `status` picks the
+--- stale/ambiguous look.
+function M.group(value, colors, status)
+  local l = M.label(value)
+  local bg = M.color(value, colors)
+  if not bg then return 'EarmarkUnknown' end
+  local style = (status == 'stale' or status == 'ambiguous') and status or nil
+  local name
+  if l and bg == l.color then
+    name = l.group
+  else
+    name = 'EarmarkHex' .. bg:gsub('#', '')
+  end
+  if style then name = name .. (style == 'stale' and 'Stale' or 'Ambiguous') end
+  return ensure(name, bg, style)
+end
+
+--- Display name of a label (without doc names): its name, or "set·key".
+function M.label_name(value)
+  local l = M.label(value)
+  return l and l.name or value.label
 end
 
 --- Resolve a count in the current set: the label whose key is the count, else the

@@ -204,43 +204,56 @@ end
 -- Setup
 ---------------------------------------------------------------------------
 
-local function map(modes, lhs, rhs, desc, opts)
-  if not lhs then return end
-  vim.keymap.set(modes, lhs, rhs, vim.tbl_extend('force', { desc = desc, silent = true }, opts or {}))
+local actions = require('earmark.actions')
+local log = require('earmark.log')
+
+local function register_actions()
+  local A = actions.register
+  local function op_expr(suffix)
+    return function()
+      return M.operator_expr(suffix)
+    end
+  end
+  A({ name = 'operator', desc = 'annotate (count picks the label)', modes = { n = op_expr(), x = op_expr() }, expr = true, cmd = false })
+  A({ name = 'line', desc = 'annotate line', modes = { n = op_expr('_') }, expr = true, cmd = false })
+  A({ name = 'erase', desc = 'erase annotation(s)', modes = { n = M.erase, x = M.erase_visual } })
+  A({ name = 'clear', desc = 'erase all annotations in this buffer', modes = { n = M.clear } })
+  A({ name = 'restore', desc = 'restore last erased', modes = { n = M.restore } })
+  A({ name = 'next', desc = 'next annotation', modes = { n = M.next } })
+  A({ name = 'prev', desc = 'previous annotation', modes = { n = M.prev } })
+  A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
+  A({ name = 'info', desc = 'annotation info', modes = { n = M.info } })
+  A({
+    name = 'set',
+    desc = 'switch label set',
+    cmd = function(args)
+      if args[1] then M.use_set(args[1]) else M.cycle_set() end
+    end,
+    complete = function()
+      return sets.order
+    end,
+  })
+  A({
+    name = 'reload',
+    desc = 'reload annotations from disk',
+    cmd = function()
+      buffer.reload(api.nvim_get_current_buf())
+    end,
+  })
+  A({ name = 'log', desc = 'show the earmark log', cmd = log.show })
 end
 
-local function setup_keymaps(keys)
-  local expr = { expr = true, replace_keycodes = true }
-  -- <Plug> mappings are always defined; defaults only point at them.
-  map({ 'n', 'x' }, '<Plug>(earmark-operator)', function()
-    return M.operator_expr()
-  end, 'Annotate (count picks the label)', expr)
-  map('n', '<Plug>(earmark-line)', function()
-    return M.operator_expr('_')
-  end, 'Annotate line', expr)
-  map('n', '<Plug>(earmark-erase)', M.erase, 'Erase annotation under cursor')
-  map('x', '<Plug>(earmark-erase)', M.erase_visual, 'Erase annotations in selection')
-  map('n', '<Plug>(earmark-restore)', M.restore, 'Restore last erased annotations')
-  map('n', '<Plug>(earmark-next)', M.next, 'Next annotation')
-  map('n', '<Plug>(earmark-prev)', M.prev, 'Previous annotation')
-  map('n', '<Plug>(earmark-cycle-set)', M.cycle_set, 'Next label set')
-  map('n', '<Plug>(earmark-info)', M.info, 'Annotation info')
-  if not keys then return end
-  local plug = { remap = true }
-  map({ 'n', 'x' }, keys.operator, '<Plug>(earmark-operator)', 'Annotate (count picks the label)', plug)
-  map('n', keys.line, '<Plug>(earmark-line)', 'Annotate line', plug)
-  map({ 'n', 'x' }, keys.erase, '<Plug>(earmark-erase)', 'Erase annotation(s)', plug)
-  map('n', keys.restore, '<Plug>(earmark-restore)', 'Restore last erased', plug)
-  map('n', keys.next, '<Plug>(earmark-next)', 'Next annotation', plug)
-  map('n', keys.prev, '<Plug>(earmark-prev)', 'Previous annotation', plug)
-  map('n', keys.cycle_set, '<Plug>(earmark-cycle-set)', 'Next label set', plug)
-  map('n', keys.info, '<Plug>(earmark-info)', 'Annotation info', plug)
+local function guard(where, fn)
+  return function(ev)
+    log.guard(where, fn, ev)
+  end
 end
 
 local function setup_autocmds()
   local group = api.nvim_create_augroup('earmark', { clear = true })
   local au = function(ev, cb, opts)
-    api.nvim_create_autocmd(ev, vim.tbl_extend('force', { group = group, callback = cb }, opts or {}))
+    local name = type(ev) == 'table' and table.concat(ev, ',') or ev
+    api.nvim_create_autocmd(ev, vim.tbl_extend('force', { group = group, callback = guard(name, cb) }, opts or {}))
   end
   au('BufReadPost', function(ev)
     if buffer.state[ev.buf] then
@@ -265,7 +278,7 @@ local function setup_autocmds()
     timers[ev.buf] = t
     t:stop()
     t:start(config.options.debounce_ms, 0, vim.schedule_wrap(function()
-      buffer.on_change(ev.buf)
+      log.guard('on_change', buffer.on_change, ev.buf)
     end))
   end)
   au({ 'BufUnload' }, function(ev)
@@ -288,37 +301,29 @@ local function setup_autocmds()
   end)
 end
 
-local subcommands = {
-  erase = M.erase,
-  clear = M.clear,
-  restore = M.restore,
-  next = M.next,
-  prev = M.prev,
-  info = M.info,
-  reload = function()
-    buffer.reload(api.nvim_get_current_buf())
-  end,
-  set = function(args)
-    if args[2] then M.use_set(args[2]) else M.cycle_set() end
-  end,
-}
-
 function M.setup(opts)
+  local compat = require('earmark.compat')
+  if not compat.supported() then
+    vim.notify('earmark: requires Neovim 0.11 or newer', vim.log.levels.ERROR)
+    return
+  end
   config.setup(opts)
   sets.load(config.options)
-  setup_keymaps(config.options.keys)
+  register_actions()
+  actions.apply_keymaps(config.options.keys)
   setup_autocmds()
-  api.nvim_create_user_command('Earmark', function(cmd)
-    local f = subcommands[cmd.fargs[1] or 'info']
-    if not f then return notify('unknown subcommand ' .. cmd.fargs[1], vim.log.levels.WARN) end
-    f(cmd.fargs)
-  end, {
+  api.nvim_create_user_command('Earmark', actions.run_command, {
     nargs = '*',
+    range = true,
     complete = function(_, line)
       local args = vim.split(line, '%s+')
-      if #args <= 2 then return vim.tbl_keys(subcommands) end
-      if args[2] == 'set' then return sets.order end
-      return {}
+      if #args <= 2 then
+        return vim.tbl_filter(function(n)
+          return vim.startswith(n, args[2] or '')
+        end, actions.commands())
+      end
+      local a = actions.by_name[args[2]]
+      return a and a.complete and a.complete(args) or {}
     end,
   })
   -- Buffers loaded before setup (e.g. the file Neovim was started with).

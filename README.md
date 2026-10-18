@@ -35,6 +35,7 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `gh` without a count | reuse the last label |
 | `.` | repeat with the same label |
 | `<leader>mx` | erase annotation under cursor (Visual: all in selection) |
+| `<leader>mX` | erase every annotation in the buffer (restorable) |
 | `<leader>mu` | restore the most recently erased |
 | `<leader>mn` / `<leader>mN` | next / previous annotation |
 | `<leader>ms` | switch to the next label set |
@@ -43,7 +44,9 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 Annotating exactly the same span again changes its label. Overlapping annotations stack,
 with smaller spans drawn on top.
 
-`:Earmark {info|erase|clear|restore|next|prev|set [name]|reload}`
+`:Earmark {info|erase|clear|restore|next|prev|cycle_set|set [name]|reload|log}`
+
+`:Earmark log` shows recent warnings and errors (also written to `<storage_dir>/earmark.log`).
 
 ## Configure
 
@@ -60,7 +63,7 @@ require('earmark').setup({
   context = 32, -- bytes of surrounding text remembered on each side
   keys = { -- false disables all defaults; any entry can be false too
     operator = 'gh', line = 'ghh',
-    erase = '<leader>mx', restore = '<leader>mu',
+    erase = '<leader>mx', clear = '<leader>mX', restore = '<leader>mu',
     next = '<leader>mn', prev = '<leader>mN',
     cycle_set = '<leader>ms', info = '<leader>mi',
   },
@@ -93,10 +96,16 @@ A count resolves to the label whose key is that number, else to the label at tha
 - **Other files:** `<storage_dir>/files/<absolute path>.json`.
 - **Scratch, unnamed and plugin buffers:** `<storage_dir>/scratch/<id>.json`.
 
-Each record holds the annotations plus a snapshot of the text they were recorded against.
-On load, the snapshot is diffed against the current text to re-anchor each annotation.
+Each record (schema v2) holds the annotations, their notes and tags, the names you gave
+labels in that document, and a fingerprint of the text they were recorded against. That
+text itself is kept beside it as a snapshot (`<base>/snap/…`). On load, the snapshot is
+diffed against the current text to re-anchor each annotation. Inside a project, `snap/` is
+listed in an auto-written `.earmark/.gitignore`, so committed records stay small; a fresh
+clone without snapshots re-anchors by quote and surrounding text instead.
+
 Writes are atomic. A record that can't be parsed is left untouched, and saving for that
-buffer is disabled with a warning.
+buffer is disabled with a warning. v1 records (snapshot inline) are read as is and rewritten
+as v2 on the next save.
 
 ## API
 
@@ -107,7 +116,9 @@ em.list(buf)  -- { { annotation = {...}, s = {r, c}, e = {r, c} }, ... }  (s/e n
 em.at(buf, pos)
 ```
 
-Event: `User EarmarkChanged` with `data = { buf, action = 'add'|'update'|'erase'|'restore'|'repair', ids }`.
+Events: `User EarmarkChanged` for every change, plus a specific `User Earmark<Action>`
+(`EarmarkAdd`, `EarmarkUpdate`, `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`,
+`EarmarkNote`, `EarmarkLoad`), all with `data = { buf, action, ids }`.
 
 ## Develop
 

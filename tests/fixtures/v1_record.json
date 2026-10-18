@@ -1,0 +1,278 @@
+{
+  "annotations": [
+    {
+      "created": 1791206767,
+      "e": [
+        5,
+        4
+      ],
+      "id": "c02a0f26-8518-4af1-938b-302db5c8f664",
+      "original_quote": "test",
+      "prefix": "test\n\n\n\n\n",
+      "quote": "test",
+      "s": [
+        5,
+        0
+      ],
+      "status": "ok",
+      "suffix": " this shit for real:\n  - pens\n  ",
+      "updated": 1791206767,
+      "values": [
+        {
+          "label": "1",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "created": 1791206581,
+      "e": [
+        5,
+        9
+      ],
+      "id": "75b83d5d-ac0f-4610-91d6-1b9e7ee21b59",
+      "original_quote": "this",
+      "prefix": "test\n\n\n\n\ntest ",
+      "quote": "this",
+      "s": [
+        5,
+        5
+      ],
+      "status": "ok",
+      "suffix": " shit for real:\n  - pens\n  - 15 ",
+      "updated": 1791206581,
+      "values": [
+        {
+          "label": "2",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "created": 1791206746,
+      "e": [
+        5,
+        12
+      ],
+      "id": "f7ea0e19-3e36-4215-86f3-abd3ed5b9820",
+      "original_quote": "his sh",
+      "prefix": "test\n\n\n\n\ntest t",
+      "quote": "his sh",
+      "s": [
+        5,
+        6
+      ],
+      "status": "ok",
+      "suffix": "it for real:\n  - pens\n  - 15 pen",
+      "updated": 1791206746,
+      "values": [
+        {
+          "label": "1",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "created": 1791206586,
+      "e": [
+        5,
+        9
+      ],
+      "id": "a1928571-7518-4f7b-a904-3422e5aa98ee",
+      "original_quote": "is",
+      "prefix": "test\n\n\n\n\ntest th",
+      "quote": "is",
+      "s": [
+        5,
+        7
+      ],
+      "status": "ok",
+      "suffix": " shit for real:\n  - pens\n  - 15 ",
+      "updated": 1791206638,
+      "values": [
+        {
+          "label": "2",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "created": 1791206666,
+      "e": [
+        5,
+        18
+      ],
+      "id": "e11c9f68-e622-4d92-ab54-82efc20dbd6e",
+      "original_quote": "for",
+      "prefix": "test\n\n\n\n\ntest this shit ",
+      "quote": "for",
+      "s": [
+        5,
+        15
+      ],
+      "status": "ok",
+      "suffix": " real:\n  - pens\n  - 15 pens\n\n\n\nC",
+      "updated": 1791206666,
+      "values": [
+        {
+          "label": "4",
+          "set": "vivid"
+        }
+      ]
+    }
+  ],
+  "doc": {
+    "filetype": "markdown",
+    "key": "notes/doc.md",
+    "kind": "file",
+    "name": "/tmp/proj/notes/doc.md"
+  },
+  "fingerprint": "3eebb2395a7e0c80beb757bc3b5ff539f41c63765b48dfd00fd8bd81cee97ab5",
+  "snapshot": [
+    "test",
+    "",
+    "",
+    "",
+    "",
+    "test this shit for real:",
+    "  - pens",
+    "  - 15 pens",
+    "",
+    "",
+    "",
+    "Cant apply diffferent highlight over same word and have it be visible that the highlights overlap. not sure how to handle this."
+  ],
+  "trash": [
+    {
+      "batch": "ac3d473d-d503-4734-ba94-dc07d92d8db2",
+      "created": 1791206474,
+      "e": [
+        0,
+        4
+      ],
+      "erased": 1791206540,
+      "id": "51172a4a-143a-49e0-bca8-792613dc6f94",
+      "original_quote": "test",
+      "prefix": "",
+      "quote": "test",
+      "s": [
+        0,
+        0
+      ],
+      "status": "ok",
+      "suffix": " \ntest this shit for real:\n  - p",
+      "updated": 1791206474,
+      "values": [
+        {
+          "label": "1",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "batch": "b9020ba5-bb58-4414-837d-856adf94f2ee",
+      "created": 1791206560,
+      "e": [
+        1,
+        24
+      ],
+      "erased": 1791206562,
+      "id": "49986dd0-f01b-4acb-a555-cf181c7a8974",
+      "original_quote": "test this shit for real:",
+      "prefix": "test \n",
+      "quote": "test this shit for real:",
+      "s": [
+        1,
+        0
+      ],
+      "status": "ok",
+      "suffix": "\n  - pens\n  - 15 pens",
+      "updated": 1791206560,
+      "values": [
+        {
+          "label": "1",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "batch": "c3dcdb45-e744-4ce2-9efb-ce6ef01e8c62",
+      "created": 1791206570,
+      "e": [
+        1,
+        9
+      ],
+      "erased": 1791206574,
+      "id": "d171b3f2-a7ca-42ad-851f-2ed311d43c86",
+      "original_quote": "this",
+      "prefix": "test \ntest ",
+      "quote": "this",
+      "s": [
+        1,
+        5
+      ],
+      "status": "ok",
+      "suffix": " shit for real:\n  - pens\n  - 15 ",
+      "updated": 1791206570,
+      "values": [
+        {
+          "label": "2",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "batch": "a2f48e14-32cf-4546-9682-12b300938a96",
+      "created": 1791206642,
+      "e": [
+        1,
+        14
+      ],
+      "erased": 1791206650,
+      "id": "e3a5ae44-b92c-46c9-a4db-d4380181384e",
+      "original_quote": "hit",
+      "prefix": "test \ntest this s",
+      "quote": "hit",
+      "s": [
+        1,
+        11
+      ],
+      "status": "ok",
+      "suffix": " for real:\n  - pens\n  - 15 pens",
+      "updated": 1791206642,
+      "values": [
+        {
+          "label": "2",
+          "set": "vivid"
+        }
+      ]
+    },
+    {
+      "batch": "b9d8e594-cdd3-42db-9d60-4e2235346213",
+      "created": 1791206661,
+      "e": [
+        5,
+        14
+      ],
+      "erased": 1791206705,
+      "id": "cbb93831-68ab-4799-9533-4542b11c2c03",
+      "original_quote": "hit",
+      "prefix": "test\n\n\n\n\ntest this s",
+      "quote": "hit",
+      "s": [
+        5,
+        11
+      ],
+      "status": "ok",
+      "suffix": " for real:\n  - pens\n  - 15 pens",
+      "updated": 1791206661,
+      "values": [
+        {
+          "label": "2",
+          "set": "vivid"
+        }
+      ]
+    }
+  ],
+  "version": 1
+}
