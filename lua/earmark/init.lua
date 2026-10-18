@@ -100,6 +100,7 @@ end
 local function prompt_for(spans, on_value, opts)
   local buf, win = api.nvim_get_current_buf(), api.nvim_get_current_win()
   opts = opts or {}
+  require('earmark.ui.hover').hide()
   require('earmark.ui.prompt').open({
     buf = buf,
     win = win,
@@ -342,6 +343,23 @@ function M.use_set(name)
   notify('label set: ' .. name)
 end
 
+--- `<leader>mm`: open (or close) the note of the annotation under the cursor; a count
+--- picks the n-th overlapping one, innermost first.
+function M.note()
+  local note = require('earmark.ui.note')
+  if note.active then return note.close() end
+  local h = hit_under_cursor()
+  if h then note.open(0, h.a.id) end
+end
+
+function M.peek()
+  require('earmark.ui.hover').peek(vim.v.count)
+end
+
+function M.toggle_hover()
+  require('earmark.ui.hover').toggle()
+end
+
 function M.info()
   local hits = buffer.find(0, cursor_pos())
   if #hits == 0 then return notify('nothing under the cursor') end
@@ -403,7 +421,10 @@ local function register_actions()
   A({ name = 'next', desc = 'next annotation', modes = { n = M.next } })
   A({ name = 'prev', desc = 'previous annotation', modes = { n = M.prev } })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
-  A({ name = 'info', desc = 'annotation info', modes = { n = M.info } })
+  A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
+  A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })
+  A({ name = 'toggle_hover', desc = 'automatic hover on/off', modes = { n = M.toggle_hover } })
+  A({ name = 'info', desc = 'annotation info as a message', cmd = M.info })
   A({ name = 'relabel', desc = 'change label', modes = { n = M.relabel } })
   A({ name = 'add_value', desc = 'add a label', modes = { n = M.add_value } })
   A({ name = 'rename', desc = 'name label for this file', modes = { n = M.rename } })
@@ -480,6 +501,7 @@ local function setup_autocmds()
       buffer.save(buf)
     end
   end)
+  require('earmark.ui.hover').setup(au)
   au('ColorScheme', function()
     sets.apply_highlights()
     require('earmark.render').apply_highlights()

@@ -27,7 +27,9 @@ M.defaults = {
     next = '<leader>mn',
     prev = '<leader>mN',
     cycle_set = '<leader>ms',
-    info = '<leader>mi',
+    peek = '<leader>mi', -- show the hover now and enter it (scroll, q closes)
+    note = '<leader>mm', -- open/close the note of the annotation under the cursor
+    toggle_hover = '<leader>mh',
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -42,6 +44,24 @@ M.defaults = {
   },
   ui = {
     border = 'rounded', -- any 'winborder' value
+  },
+  -- The note editor (`<leader>mm`).
+  note = {
+    layout = 'float', -- 'float' | 'split' (,s / ,f switch while editing)
+    width = 0.6, -- at most this fraction of the window width ...
+    max_width = 100, -- ... and this many columns
+    height = { min = 5, max = 0.5 },
+    winblend = 0,
+  },
+  -- The hover shown when the cursor rests on an annotation.
+  hover = {
+    auto = true, -- `<leader>mh` toggles
+    delay = 120, -- ms after the cursor stops
+    -- 'named_or_note': only for annotations with a name, note, tags, extra labels or a
+    -- stale/ambiguous status; 'always': for every annotation
+    show_when = 'named_or_note',
+    max_width = 0.5, -- fractions of the window
+    max_height = 0.5,
   },
   overlap = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
