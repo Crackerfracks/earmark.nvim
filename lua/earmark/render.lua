@@ -2,7 +2,11 @@
 --   * where annotations overlap, a composite: the OKLab mean of their colours, underlined in
 --     the outermost one's colour (same colour throughout: underlined in the text colour, so
 --     a word marked inside a phrase of the same label is still visible);
---   * an annotation's second label as an undercurl in that label's colour.
+--   * an annotation's second label as an undercurl in that label's colour;
+--   * end-of-line indicators: a pencil per note, #tags and [identifiers] of the annotations
+--     ending on that line, in their colours (never a second background). A line too long
+--     for them gets them on a virtual line below instead (kept in `ns_lines`, since virtual
+--     lines can't be ephemeral).
 -- The persistent extmarks in `buffer.ns` stay the anchors and draw each span's own colour;
 -- swatches for labels 3+ are persistent too (inline virtual text can't be ephemeral).
 local buffer = require('earmark.buffer')
@@ -10,11 +14,13 @@ local color = require('earmark.color')
 local config = require('earmark.config')
 local log = require('earmark.log')
 local sets = require('earmark.sets')
+local tags = require('earmark.tags')
 
 local api = vim.api
 local M = {}
 
 M.ns = api.nvim_create_namespace('earmark_render')
+M.ns_lines = api.nvim_create_namespace('earmark_indicator_lines')
 
 local PRIORITY_CURL = 4300 -- above every span (max 4200)
 local PRIORITY_MIX = 4500
@@ -176,7 +182,174 @@ function M.segments(buf, top, bot)
   return res
 end
 
-local function draw(buf, top, bot)
+---------------------------------------------------------------------------
+-- End-of-line indicators
+---------------------------------------------------------------------------
+
+local function ind_opts()
+  return config.options.indicators
+end
+
+local function last_row(it)
+  -- a span ending at column 0 ends on the line before
+  if it.e[2] == 0 and it.e[1] > it.s[1] then return it.e[1] - 1 end
+  return it.e[1]
+end
+
+--- Indicator chunks for annotations ending on `row`, or nil when there are none.
+--- Returns { chunks = { {text, group} ... }, col = start column of the first one }.
+local function eol_from(S, items, row)
+  local o = ind_opts()
+  local ending = {}
+  for _, it in ipairs(items) do
+    if last_row(it) == row then ending[#ending + 1] = it end
+  end
+  if #ending == 0 then return nil end
+  table.sort(ending, function(x, y)
+    return before(x.s, y.s)
+  end)
+  local nerd = vim.g.have_nerd_font ~= false
+  local pencil, empty = nerd and '✎' or '*', nerd and '·' or '.'
+  local chunks, pencils = {}, 0
+  local seen_tag, seen_id = {}, {}
+  local tag_chunks, id_chunks = {}, {}
+  for _, it in ipairs(ending) do
+    local hex = it.hex
+    local fg = hex and sets.fg_group(hex) or 'EarmarkIndicator'
+    if it.a.note then
+      pencils = pencils + 1
+      if pencils <= o.max_pencils then chunks[#chunks + 1] = { pencil, fg } end
+    elseif o.show_empty then
+      chunks[#chunks + 1] = { empty, fg }
+    end
+    local list, idents = tags.of(it.a)
+    for _, t in ipairs(list) do
+      if not seen_tag[t] then
+        seen_tag[t] = true
+        tag_chunks[#tag_chunks + 1] = { '#' .. t, fg }
+      end
+    end
+    if o.identifiers then
+      for _, t in ipairs(idents) do
+        if not seen_id[t] then
+          seen_id[t] = true
+          id_chunks[#id_chunks + 1] = { '[' .. t .. ']', hex and sets.fg_group(hex, true) or 'EarmarkIndicator' }
+        end
+      end
+    end
+  end
+  if pencils > o.max_pencils then chunks[#chunks + 1] = { '+' .. (pencils - o.max_pencils), 'Comment' } end
+  for _, c in ipairs(tag_chunks) do
+    chunks[#chunks + 1] = c
+  end
+  vim.list_extend(chunks, id_chunks)
+  if #chunks == 0 then return nil end
+  -- one space between items, except between pencils and inside [A][B]
+  local out = {}
+  for i, c in ipairs(chunks) do
+    local prev = chunks[i - 1]
+    if prev and not (prev[1] == pencil and c[1] == pencil) and not (prev[1]:sub(1, 1) == '[' and c[1]:sub(1, 1) == '[') then
+      out[#out + 1] = { ' ', 'Normal' }
+    end
+    out[#out + 1] = c
+  end
+  return { chunks = out, col = ending[1].s[1] == row and ending[1].s[2] or 0 }
+end
+
+--- Indicator chunks for one row of `buf` (see eol_from), or nil.
+function M.eol_items(buf, row)
+  if buf == 0 then buf = api.nvim_get_current_buf() end
+  local S = buffer.state[buf]
+  if not S then return nil end
+  return eol_from(S, visible(buf, S, row, row), row)
+end
+
+local function chunks_width(chunks)
+  local w = 0
+  for _, c in ipairs(chunks) do
+    w = w + vim.fn.strdisplaywidth(c[1])
+  end
+  return w
+end
+
+local virt = {} -- buf -> { [row] = signature } of the virtual lines placed
+
+--- Place/remove the virtual indicator lines of rows [top, bot] to match `want`.
+local function sync_lines(buf, top, bot, want)
+  if not api.nvim_buf_is_valid(buf) then return end
+  local have = virt[buf] or {}
+  virt[buf] = have
+  local marks = api.nvim_buf_get_extmarks(buf, M.ns_lines, { top, 0 }, { bot, -1 }, { details = true })
+  local placed = {}
+  for _, m in ipairs(marks) do
+    local row = m[2]
+    if not want[row] or placed[row] or have[row] ~= want[row].sig then
+      api.nvim_buf_del_extmark(buf, M.ns_lines, m[1])
+      have[row] = nil
+    else
+      placed[row] = true
+    end
+  end
+  for row, w in pairs(want) do
+    if not placed[row] then
+      api.nvim_buf_set_extmark(buf, M.ns_lines, row, 0, { virt_lines = { w.line }, strict = false })
+      have[row] = w.sig
+    end
+  end
+end
+
+--- Remove every virtual indicator line (indicators off, or the buffer forgotten).
+function M.clear_lines(buf)
+  if api.nvim_buf_is_valid(buf) then api.nvim_buf_clear_namespace(buf, M.ns_lines, 0, -1) end
+  virt[buf] = nil
+end
+
+local function draw_indicators(win, buf, S, top, bot)
+  if ind_opts().mode ~= 'eol' then return end
+  local items = visible(buf, S, top, bot)
+  local by_row = {}
+  for _, it in ipairs(items) do
+    local r = last_row(it)
+    if r >= top and r <= bot then by_row[r] = true end
+  end
+  local info = vim.fn.getwininfo(win)[1]
+  local avail = api.nvim_win_get_width(win) - (info and info.textoff or 0)
+  local wrap = vim.wo[win].wrap
+  local want, dirty = {}, false
+  for row in pairs(by_row) do
+    local ind = eol_from(S, items, row)
+    if ind then
+      local line = api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ''
+      local lw = vim.fn.strdisplaywidth(line)
+      local used = wrap and avail > 0 and (lw % avail) or lw
+      if wrap and lw > 0 and used == 0 then used = avail end
+      local w = chunks_width(ind.chunks)
+      if used + 1 + w <= avail then
+        api.nvim_buf_set_extmark(buf, M.ns, row, 0, {
+          virt_text = ind.chunks, virt_text_pos = 'eol', ephemeral = true, priority = 100,
+        })
+      else
+        local indent = vim.fn.strdisplaywidth(line:sub(1, ind.col))
+        indent = math.min(indent, math.max(0, avail - w))
+        local vline = { { string.rep(' ', indent), 'Normal' } }
+        vim.list_extend(vline, ind.chunks)
+        local sig = vim.inspect(vline)
+        want[row] = { line = vline, sig = sig }
+      end
+    end
+  end
+  local have = virt[buf] or {}
+  for row = top, bot do
+    if (want[row] and want[row].sig) ~= have[row] then dirty = true end
+  end
+  if dirty then
+    vim.schedule(function()
+      log.guard('indicator lines', sync_lines, buf, top, bot, want)
+    end)
+  end
+end
+
+local function draw(win, buf, top, bot)
   local segs = M.segments(buf, top, bot)
   for _, c in ipairs(segs.curls) do
     api.nvim_buf_set_extmark(buf, M.ns, c.s[1], c.s[2], {
@@ -190,11 +363,12 @@ local function draw(buf, top, bot)
       priority = PRIORITY_MIX, ephemeral = true, strict = false,
     })
   end
+  draw_indicators(win, buf, buffer.state[buf], top, bot)
 end
 
-local function on_win(_, _, buf, top, bot)
+local function on_win(_, win, buf, top, bot)
   if disabled[buf] or not buffer.state[buf] then return false end
-  local ok, err = pcall(draw, buf, top, bot)
+  local ok, err = pcall(draw, win, buf, top, bot)
   if not ok then
     disabled[buf] = true
     log.error('render (buffer %d): %s', buf, err)
@@ -207,6 +381,20 @@ end
 
 function M.setup()
   api.nvim_set_decoration_provider(M.ns, { on_win = on_win })
+end
+
+--- `<leader>mv`: indicators on/off. Only changes how things look; nothing is re-read or
+--- re-saved.
+function M.toggle_indicators()
+  local o = ind_opts()
+  o.mode = o.mode == 'eol' and 'none' or 'eol'
+  if o.mode == 'none' then
+    for buf in pairs(virt) do
+      M.clear_lines(buf)
+    end
+  end
+  vim.cmd('redraw!')
+  vim.notify('earmark: indicators ' .. (o.mode == 'eol' and 'on' or 'off'))
 end
 
 --- Turn drawing back on for a buffer (after an error).

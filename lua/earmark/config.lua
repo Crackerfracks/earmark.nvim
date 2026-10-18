@@ -30,6 +30,8 @@ M.defaults = {
     peek = '<leader>mi', -- show the hover now and enter it (scroll, q closes)
     note = '<leader>mm', -- open/close the note of the annotation under the cursor
     toggle_hover = '<leader>mh',
+    toggle_indicators = '<leader>mv',
+    tags = '<leader>mt', -- add/remove tags of the annotation under the cursor
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -62,6 +64,15 @@ M.defaults = {
     show_when = 'named_or_note',
     max_width = 0.5, -- fractions of the window
     max_height = 0.5,
+  },
+  -- Indicators at the end of the line an annotation ends on: a pencil per note, its #tags
+  -- and [identifiers], in the label's colour. Lines too long for them get them on a
+  -- virtual line below.
+  indicators = {
+    mode = 'eol', -- 'eol' | 'none' (`<leader>mv` toggles)
+    max_pencils = 3, -- then "+N"
+    identifiers = true, -- show @ident tags as [ident]
+    show_empty = false, -- a dot for annotations without a note
   },
   overlap = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the

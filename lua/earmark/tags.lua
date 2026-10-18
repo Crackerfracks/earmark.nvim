@@ -50,4 +50,45 @@ function M.of(a)
   return list, parsed.idents
 end
 
+--- Tags you have used anywhere: { { name = 'todo', count = 4 }, ... }, most used first.
+local function path()
+  return require('earmark.config').options.storage_dir .. '/tags.json'
+end
+
+function M.known()
+  local t = require('earmark.store').read_json(path())
+  local out = {}
+  for name, n in pairs(type(t.counts) == 'table' and t.counts or {}) do
+    out[#out + 1] = { name = name, count = n }
+  end
+  table.sort(out, function(x, y)
+    if x.count ~= y.count then return x.count > y.count end
+    return x.name < y.name
+  end)
+  return out
+end
+
+--- Count each of `list` as used once more (newly added to an annotation).
+function M.remember(list)
+  if not list or #list == 0 then return end
+  local store = require('earmark.store')
+  local t = store.read_json(path())
+  t.counts = type(t.counts) == 'table' and t.counts or {}
+  for _, name in ipairs(list) do
+    t.counts[name] = (t.counts[name] or 0) + 1
+  end
+  store.write_json(path(), t)
+end
+
+--- Tags in `new` that are not in `old`.
+function M.added(old, new)
+  local had = {}
+  for _, t in ipairs(old or {}) do
+    had[t] = true
+  end
+  return vim.tbl_filter(function(t)
+    return not had[t]
+  end, new or {})
+end
+
 return M
