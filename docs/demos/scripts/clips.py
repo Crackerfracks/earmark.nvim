@@ -1,9 +1,11 @@
 """The demo clips, in README order: one idea per clip. Each function drives one recording.
 
-c.step(keys, note)   a "before" frame with the note, type the keys, pause, result frame
-c.more(keys)         more keys in the same step (into a prompt or picker), result frame
-c.text(s)            literal text in one go (names, notes, picker queries)
+c.step(keys, note)   the note held to be read, the keys one at a time, the result held (>= 3 s)
+c.more(keys)         more keys in the same step (into a prompt or picker), result held
+c.text(s)            literal text a character at a time (names, notes, picker queries); in a clip
+                     with typo=True the first long enough text gets one typo, fixed with Backspace
 c.ex(line, note)     type an Ex command visibly and run it
+Pacing lives in record.py (Clip.gap, BEFORE/AFTER/END).
 c.goto(row, col)     place the cursor (setup only; the page's "Try it" says how to get there)
 c.shot(hold)         one more frame
 Rows are 1-based, columns 0-based. A space in a key string is <leader> (Space).
@@ -28,7 +30,7 @@ CHANGED = 'notes/changed.md'
 
 def still(c):
     """Clear the key box and take the frame the still screenshot uses."""
-    c.note('')
+    c.note('', clear=True)
     c.shot(1.0, wait=0.8)
     c.mark_still()
 
@@ -84,7 +86,7 @@ def _(c):
     c.step('<Esc>', 'Esc skips naming: label 12 stays', before=0)
 
 
-@clip('prompt-name', 'First use of a label: the prompt asks you to name it (default)', file=FRESH, cursor=(7, 4))
+@clip('prompt-name', 'First use of a label: the prompt asks you to name it (default)', file=FRESH, cursor=(7, 4), typo=True)
 def _(c):
     c.step('ghip12<CR>', 'apply label 12 to the paragraph')
     c.note('type a name for label 12 in this project')
@@ -250,7 +252,7 @@ def _(c):
     c.step('<CR>', 'Enter opens the file at the annotation', before=0)
 
 
-@clip('pick-query', ':Earmark pick_all takes a query: tags, labels, status, has:note', file=ESSAY, cursor=(1, 0))
+@clip('pick-query', ':Earmark pick_all takes a query: tags, labels, status, has:note', file=ESSAY, cursor=(1, 0), typo=True)
 def _(c):
     c.ex('Earmark pick_all has:note #todo', 'only annotations with a note and the tag #todo', hold=3.0)
     c.mark_still()
@@ -341,7 +343,7 @@ def _(c):
 
 # ------------------------------------------------------------- Notes and the hover ----------
 
-@clip('note', '<leader>mm: write a note on an annotation', file=ESSAY, cursor=(4, 40))
+@clip('note', '<leader>mm: write a note on an annotation', file=ESSAY, cursor=(4, 40), typo=True)
 def _(c):
     c.step(' mm', 'a Markdown note opens under the text, in Insert mode')
     c.note('#tags and @identifiers anywhere in the note are picked up')
@@ -441,7 +443,7 @@ OVERLAP_LEGEND = [
     'the text colour; three levels deep, a double underline.',
     'Line 5: one word, four labels: 6 is the fill, the second label (3) is an undercurl, labels 3 and up are '
     'small squares after the word.',
-    'Line 7: "budget" (label 7) was retyped as "money": the annotation is now stale (should be underdashed).',
+    'Line 7: "budget" (label 7) was retyped as "money": the annotation is now stale, drawn with a dashed underline.',
 ]
 
 
@@ -517,21 +519,21 @@ def _(c):
     c.step('u', 'undo: it comes back')
 
 
-@clip('external-edit', 'Edit outside Neovim, then :e (shows a bug)', file=ESSAY, cursor=(1, 0))
+@clip('external-edit', 'An edit made outside Neovim: annotations stay on their words', file=ESSAY, cursor=(1, 0), typo=True)
 def _(c):
     c.ex("!sed -i '2a The council met late on Tuesday.\\n' %",
          'add two lines near the top with sed, outside Neovim', hold=1.5)
     c.more('<CR>', hold=0.5)
-    c.ex('e', 'bug: old highlights stay at the old lines', hold=3.0)
+    c.ex('e', 'reloaded: every highlight moved down with its words', hold=3.0)
     c.mark_still()
 
 
-@clip('external-edit-bug', 'Known issue: an outside edit inside an annotated line', file=ESSAY, cursor=(1, 0))
+@clip('external-edit-inline', 'An outside edit inside an annotated line', file=ESSAY, cursor=(1, 0))
 def _(c):
     c.ex("!sed -i 's/The committee approved/After midnight, the committee finally approved/' %",
          'insert words before "approved" on line 3, outside Neovim', hold=1.5)
     c.more('<CR>', hold=0.5)
-    c.ex('e', 'the highlights stay at the old columns, not on the words', hold=3.5)
+    c.ex('e', 'reloaded: still on "approved the annual budget"', hold=3.5)
     c.mark_still()
 
 
@@ -544,7 +546,7 @@ def _(c):
     c.mark_still()
 
 
-@clip('scratch', 'Scratch buffers keep their annotations: :Earmark scratch', file=FRESH, cursor=(1, 0))
+@clip('scratch', 'Scratch buffers keep their annotations: :Earmark scratch', file=FRESH, cursor=(1, 0), typo=True)
 def _(c):
     c.ex('enew', 'a new unnamed buffer', hold=1.0)
     c.keys('i')
