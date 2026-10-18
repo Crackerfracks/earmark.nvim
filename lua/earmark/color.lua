@@ -110,6 +110,79 @@ function M.contrast_fg(bg)
   return M.contrast_ratio(bg, M.dark_fg) >= M.contrast_ratio(bg, M.light_fg) and M.dark_fg or M.light_fg
 end
 
+-- Colour schemes: label colours are designed against a dark editor background (`M.reference`).
+-- On another background each colour keeps its hue and chroma and moves in lightness so it
+-- stands out from that background as much as it does from the reference: on a dark theme it
+-- shifts with the background, on a light one it is mirrored (darker than the page instead of
+-- lighter), so a highlight has the same weight on any theme.
+M.reference = '#1a1b26'
+local editor -- { L = lightness of the editor background } or nil = the reference
+local adapted = {} -- hex -> adapted hex, for the current background
+
+local function lightness(hex)
+  return (M.rgb_to_oklab(M.hex_to_rgb(hex)))
+end
+
+--- Tell the adapter which background the editor has: the `Normal` group's background, or
+--- (transparent terminals) a typical one for 'background'. Returns true when it changed.
+function M.set_background(bg, background)
+  local L
+  if bg then
+    L = lightness(bg)
+  else
+    L = background == 'light' and 0.97 or lightness(M.reference)
+  end
+  adapted = {}
+  local changed = not editor or math.abs(editor.L - L) > 1e-6
+  editor = { L = L }
+  return changed
+end
+
+--- Read the background from the current colour scheme (see `set_background`).
+function M.detect_background()
+  local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = 'Normal', link = false })
+  local bg = ok and hl and hl.bg and ('#%06x'):format(hl.bg) or nil
+  return M.set_background(bg, vim.o.background)
+end
+
+local LIGHT_SCALE = 0.4 -- how far below a light page a colour sits, per unit above the dark one
+
+--- `hex` as it should be drawn on the editor's background (unchanged when adapting is off,
+--- with `color_adapt = false`, or on the reference background).
+function M.adapt(hex)
+  if not hex or not editor then return hex end
+  local o = require('earmark.config').options
+  if o and o.color_adapt == false then return hex end
+  local hit = adapted[hex]
+  if hit then return hit end
+  local L, a, b = M.rgb_to_oklab(M.hex_to_rgb(hex))
+  local Lr, Le = lightness(M.reference), editor.L
+  local d = L - Lr -- how far above the reference background the colour sits
+  local Ln
+  if Le < 0.6 then
+    -- dark themes differ little: on a lighter one follow half the difference (a darker one,
+    -- down to black, only makes the colours stand out more)
+    Ln = L + math.max(0, Le - Lr) * 0.5
+  else
+    Ln = Le - d * LIGHT_SCALE
+  end
+  -- never vanish into the background
+  if Le < 0.6 then
+    Ln = math.max(Ln, Le + 0.08)
+  else
+    Ln = math.min(Ln, Le - 0.12)
+  end
+  Ln = math.max(0.2, math.min(0.98, Ln))
+  local out = hex
+  if math.abs(Ln - L) > 0.002 then
+    local C = math.sqrt(a * a + b * b)
+    local h = math.deg(math.atan2(b, a))
+    out = M.oklch_to_hex(Ln, C, h)
+  end
+  adapted[hex] = out
+  return out
+end
+
 -- Palette presets for the `numbered` generator.
 --   L, C: base lightness/chroma; h0: hue of key 1; zig: lightness alternation between
 --   neighbouring base hues (helps low-chroma palettes stay distinguishable).

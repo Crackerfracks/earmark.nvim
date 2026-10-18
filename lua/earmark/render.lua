@@ -53,8 +53,13 @@ local function group(key, hl)
   return name
 end
 
---- Re-define the composite groups (after `:colorscheme` cleared them).
-function M.apply_highlights()
+--- Re-define the composite groups (after `:colorscheme` cleared them). With a new
+--- background the colours themselves change, so the groups are made again as they're drawn.
+function M.apply_highlights(background_changed)
+  if background_changed then
+    mix_groups, mix_specs, n_mix = {}, {}, 0
+    return
+  end
   for name, hl in pairs(mix_specs) do
     api.nvim_set_hl(0, name, hl)
   end
@@ -63,6 +68,7 @@ end
 --- Look of an overlap segment whose members are listed outermost first.
 --- Returns a group name.
 function M.overlap_group(hexes)
+  hexes = vim.tbl_map(color.adapt, hexes)
   local uniq, seen = {}, {}
   for _, h in ipairs(hexes) do
     if not seen[h] then
@@ -90,6 +96,7 @@ function M.overlap_group(hexes)
 end
 
 function M.curl_group(hex)
+  hex = color.adapt(hex)
   return group('curl|' .. hex, { sp = hex, undercurl = true })
 end
 

@@ -166,6 +166,14 @@ for a label you haven't named, the statusline. `color_names = false` hides
 them; `color_names = function(hex) return name end` supplies your own (nil
 falls back); a set's label may carry `color_name = '...'`.
 
+                                                       *earmark-color-adapt*
+Light and dark colour schemes: the label colours are designed on a dark
+background. On any other background each colour's lightness is shifted (hue
+kept) so it stands out from the page as much as it does on dark; on a light
+theme a highlight sits a little darker than the page. It follows
+|:colorscheme| and 'background' changes. Labels themselves don't change, only
+how they're drawn. `color_adapt = false` draws the exact colours.
+
 ==============================================================================
 5. NOTES, TAGS AND THE HOVER                                   *earmark-notes*
 
@@ -276,6 +284,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
   zk = { dir = nil, open = true },
   statusline = { digits = true, color_name = true },
   color_names = true,      -- false, or function(hex) -> name|nil
+  color_adapt = true,      -- |earmark-color-adapt|
   picker = 'auto',         -- 'snacks' | 'telescope' | 'select'
   ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },
   debounce_ms = 200,

@@ -22,7 +22,7 @@ local function group(name, hex, host, bold)
   if host then name = name .. '_' .. host:gsub('[^%w_]', '') end
   local key = tostring(hex) .. (bold and 'b' or '') .. (host or '')
   if defined[name] ~= key then
-    api.nvim_set_hl(0, name, { fg = hex, bg = bg_of(host), bold = bold or nil })
+    api.nvim_set_hl(0, name, { fg = require('earmark.color').adapt(hex), bg = bg_of(host), bold = bold or nil })
     defined[name] = key
   end
   return name

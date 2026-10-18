@@ -109,6 +109,26 @@ T['a count shows which label it picked until the motion is typed'] = function()
   eq(h.texts()[1].text, 'quick')
 end
 
+T['colours adapt to a light colour scheme and back'] = function()
+  local L = function(hex)
+    return child.lua_get('(function(h) return (require("earmark.color").rgb_to_oklab(require("earmark.color").hex_to_rgb(h))) end)(...)', { hex })
+  end
+  local base = child.lua_get('require("earmark.sets").color({ set = "vivid", label = "3" })')
+  local function drawn()
+    local g = child.lua_get('require("earmark.sets").group({ set = "vivid", label = "3" })')
+    return ('#%06x'):format(child.lua_get('vim.api.nvim_get_hl(0, { name = ... }).bg', { g }))
+  end
+  -- the default dark scheme: exactly the label's colour
+  eq(drawn(), base)
+  child.lua('vim.o.background = "light"; vim.api.nvim_set_hl(0, "Normal", { bg = "#ffffff", fg = "#000000" }); vim.cmd("doautocmd ColorScheme")')
+  local light = drawn()
+  eq(light ~= base, true)
+  eq(L(light) < 0.88, true) -- clearly darker than the white page
+  eq(child.lua_get('require("earmark.sets").color({ set = "vivid", label = "3" })'), base) -- the label itself is unchanged
+  child.lua('require("earmark.config").options.color_adapt = false; vim.cmd("doautocmd ColorScheme")')
+  eq(drawn(), base)
+end
+
 T['the statusline names the colour of an unnamed next label'] = function()
   h.open()
   local s = child.lua_get('require("earmark").statusline()')

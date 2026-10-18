@@ -40,10 +40,11 @@ end
 
 local function define(name, spec)
   if spec.fg then
-    vim.api.nvim_set_hl(0, name, { fg = spec.fg, bold = spec.bold or nil })
+    vim.api.nvim_set_hl(0, name, { fg = color.adapt(spec.fg), bold = spec.bold or nil })
     return
   end
-  local hl = { bg = spec.bg, fg = color.contrast_fg(spec.bg) }
+  local bg = color.adapt(spec.bg)
+  local hl = { bg = bg, fg = color.contrast_fg(bg) }
   if spec.style == 'stale' then
     hl.underdashed, hl.sp = true, hl.fg
   elseif spec.style == 'ambiguous' then
