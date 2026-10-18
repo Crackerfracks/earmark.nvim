@@ -259,28 +259,12 @@ function M.restore()
   notify(('restored %d%s'):format(n, missing > 0 and (' (%d detached: text not found)'):format(missing) or ''))
 end
 
-local function jump(dir)
-  local cur = cursor_pos()
-  local best
-  for _, x in ipairs(buffer.list(0)) do
-    if x.s then
-      local after = x.s[1] > cur[1] or (x.s[1] == cur[1] and x.s[2] > cur[2])
-      local before = x.s[1] < cur[1] or (x.s[1] == cur[1] and x.s[2] < cur[2])
-      if dir > 0 and after and not best then best = x end
-      if dir < 0 and before then best = x end
-    end
-  end
-  if not best then return notify('no ' .. (dir > 0 and 'next' or 'previous') .. ' annotation') end
-  vim.cmd("normal! m'")
-  api.nvim_win_set_cursor(0, { best.s[1] + 1, best.s[2] })
-end
-
 function M.next()
-  jump(1)
+  require('earmark.nav').next()
 end
 
 function M.prev()
-  jump(-1)
+  require('earmark.nav').prev()
 end
 
 local function hit_under_cursor()
@@ -350,6 +334,131 @@ function M.note()
   if note.active then return note.close() end
   local h = hit_under_cursor()
   if h then note.open(0, h.a.id) end
+end
+
+---------------------------------------------------------------------------
+-- Pickers, review, quickfix, scratch
+---------------------------------------------------------------------------
+
+local function picker()
+  return require('earmark.ui.picker')
+end
+
+--- `:Earmark pick [query]` / `<leader>mp`: annotations in this buffer.
+function M.pick(args)
+  local p = picker()
+  local q = type(args) == 'table' and table.concat(args, ' ') or nil
+  p.pick(p.filter(p.doc_items(0), q), { prompt = 'Annotations', on_choice = p.jump_to })
+end
+
+--- `:Earmark pick_all [query]` / `<leader>mP`: annotations in the whole project.
+function M.pick_all(args)
+  local p = picker()
+  local q = type(args) == 'table' and table.concat(args, ' ') or nil
+  p.pick(p.filter(p.project_items(0), q), { prompt = 'Annotations in project', on_choice = p.jump_to })
+end
+
+function M.review()
+  require('earmark.ui.review').open(0)
+end
+
+function M.diff()
+  local h = hit_under_cursor()
+  if h then require('earmark.ui.review').diff(0, h.a.id) end
+end
+
+--- `:'<,'>Earmark reanchor`: attach an annotation (from the review list, else the one under
+--- the cursor) to the selected text.
+function M.reanchor(_, range)
+  if not range then return notify('select the new text first (:\'<,\'>Earmark reanchor)') end
+  local s, e = vim.fn.getpos("'<"), vim.fn.getpos("'>")
+  local line = api.nvim_buf_get_lines(0, e[2] - 1, e[2], false)[1] or ''
+  local ec = math.min(e[3], #line)
+  -- include the whole last character
+  while ec < #line and line:byte(ec + 1) >= 0x80 and line:byte(ec + 1) < 0xC0 do
+    ec = ec + 1
+  end
+  if vim.fn.visualmode() == 'V' then s[3], ec = 1, #line end
+  require('earmark.ui.review').reanchor_to_selection(0, { s[2] - 1, s[3] - 1 }, { e[2] - 1, ec })
+end
+
+--- `:Earmark qf [all] [query]`: annotations into the quickfix list.
+function M.qf(args)
+  args = args or {}
+  local all = args[1] == 'all'
+  if all then table.remove(args, 1) end
+  local p = picker()
+  local items = p.filter(all and p.project_items(0) or p.doc_items(0), table.concat(args, ' '))
+  local qf = {}
+  for _, it in ipairs(items) do
+    if it.pos then
+      qf[#qf + 1] = {
+        bufnr = it.buf,
+        filename = not it.buf and it.file or nil,
+        lnum = it.pos[1] + 1,
+        col = it.pos[2] + 1,
+        end_lnum = it.end_pos and it.end_pos[1] + 1 or nil,
+        end_col = it.end_pos and it.end_pos[2] + 1 or nil,
+        text = it.text:gsub('^[^\n]-%d+:%d+  ', ''),
+        user_data = { earmark = it.annotation.id },
+      }
+    end
+  end
+  if #qf == 0 then return notify('no annotations') end
+  vim.fn.setqflist({}, ' ', { title = 'earmark', items = qf })
+  vim.cmd('copen')
+end
+
+--- `:Earmark scratch`: reopen an annotated scratch buffer from its saved text.
+function M.scratch()
+  local store = require('earmark.store')
+  local dir = config.options.storage_dir .. '/scratch'
+  local entries = {}
+  for _, path in ipairs(vim.fn.globpath(dir, '*.json', false, true)) do
+    local rec = store.read(path)
+    if rec and rec.doc then
+      local snap = store.snap_path(path)
+      local lines = store.read_snapshot(snap, rec)
+      if lines then
+        local first = ''
+        for _, l in ipairs(lines) do
+          if l:match('%S') then
+            first = vim.trim(l)
+            break
+          end
+        end
+        entries[#entries + 1] = {
+          id = rec.doc.key,
+          lines = lines,
+          filetype = rec.doc.filetype,
+          n = #(rec.annotations or {}),
+          when = vim.fn.getftime(path),
+          text = first,
+        }
+      end
+    end
+  end
+  if #entries == 0 then return notify('no saved scratch buffers') end
+  table.sort(entries, function(x, y) return x.when > y.when end)
+  vim.ui.select(entries, {
+    prompt = 'Reopen scratch buffer',
+    format_item = function(x)
+      return ('%s  %d annotation%s  %s'):format(os.date('%Y-%m-%d %H:%M', x.when), x.n, x.n == 1 and '' or 's', x.text:sub(1, 50))
+    end,
+  }, function(x)
+    if not x then return end
+    for b, S in pairs(buffer.state) do
+      if S.doc.kind == 'scratch' and S.doc.key == x.id and api.nvim_buf_is_valid(b) then
+        return api.nvim_set_current_buf(b)
+      end
+    end
+    local buf = api.nvim_create_buf(true, true)
+    vim.b[buf].earmark_doc = x.id
+    api.nvim_buf_set_lines(buf, 0, -1, false, x.lines)
+    if x.filetype and x.filetype ~= '' then vim.bo[buf].filetype = x.filetype end
+    api.nvim_set_current_buf(buf)
+    buffer.get(buf)
+  end)
 end
 
 function M.tags()
@@ -429,6 +538,16 @@ local function register_actions()
   A({ name = 'restore', desc = 'restore last erased', modes = { n = M.restore } })
   A({ name = 'next', desc = 'next annotation', modes = { n = M.next } })
   A({ name = 'prev', desc = 'previous annotation', modes = { n = M.prev } })
+  A({ name = 'next_same', desc = 'next with the same label', modes = { n = function() require('earmark.nav').next_same() end } })
+  A({ name = 'prev_same', desc = 'previous with the same label', modes = { n = function() require('earmark.nav').prev_same() end } })
+  A({ name = 'jump', desc = 'jump to an annotation (flash)', modes = { n = function() require('earmark.nav').jump() end } })
+  A({ name = 'pick', desc = 'pick an annotation in this file', modes = { n = M.pick }, cmd = M.pick })
+  A({ name = 'pick_all', desc = 'pick an annotation in the project', modes = { n = M.pick_all }, cmd = M.pick_all })
+  A({ name = 'review', desc = 'review stale/detached annotations', modes = { n = M.review } })
+  A({ name = 'diff', desc = 'original vs current text', modes = { n = M.diff } })
+  A({ name = 'reanchor', desc = 'attach an annotation to the selection', cmd = M.reanchor })
+  A({ name = 'qf', desc = 'annotations to quickfix', cmd = M.qf, complete = function() return { 'all' } end })
+  A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
   A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
   A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })

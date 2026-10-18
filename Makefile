@@ -10,7 +10,13 @@ test-file: $(MINI)
 lint:
 	@if command -v stylua >/dev/null 2>&1; then stylua --check lua tests scripts; else echo "stylua not installed"; fi
 
+# optional: lets the flash jump test run instead of being skipped
+deps: deps/mini.nvim deps/flash.nvim
+
+deps/flash.nvim:
+	git clone --filter=blob:none --depth 1 https://github.com/folke/flash.nvim $@
+
 deps/mini.nvim:
 	git clone --filter=blob:none --depth 1 https://github.com/echasnovski/mini.nvim $@
 
-.PHONY: test test-file lint
+.PHONY: test test-file lint deps

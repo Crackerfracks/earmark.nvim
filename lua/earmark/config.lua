@@ -32,6 +32,13 @@ M.defaults = {
     toggle_hover = '<leader>mh',
     toggle_indicators = '<leader>mv',
     tags = '<leader>mt', -- add/remove tags of the annotation under the cursor
+    next_same = '<leader>m]', -- next/previous with the label under the cursor
+    prev_same = '<leader>m[',
+    jump = '<leader>mj', -- jump labels on annotations (flash.nvim; else the picker)
+    pick = '<leader>mp', -- annotations in this file
+    pick_all = '<leader>mP', -- annotations in the project
+    review = '<leader>md', -- stale, ambiguous and detached annotations
+    diff = '<leader>mD', -- original vs current text of the annotation under the cursor
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -79,6 +86,8 @@ M.defaults = {
     -- outer one's colour. 'top': the smallest span simply covers the others.
     style = 'blend',
   },
+  -- 'auto' (snacks, then telescope, then vim.ui.select), 'snacks', 'telescope' or 'select'
+  picker = 'auto',
   -- Buffers with these 'buftype's are never annotated.
   ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },
   debounce_ms = 200,
