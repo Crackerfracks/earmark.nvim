@@ -113,6 +113,10 @@ M.defaults = {
     group_by = 'label', -- 'label' | 'position' | 'tag' | 'time'
     include_detached = true,
     format = nil, -- function(list, ctx) -> lines, replaces the body
+    -- Where `<leader>me` writes: 'project' (<root>/.earmark/export/<project>-<path>.md),
+    -- 'beside' (next to the annotated file, as <name>.earmark.md), a function(buf, ctx) ->
+    -- path, or a list of these to write every one (the first is the one you're asked about).
+    location = 'project',
   },
   zk = {
     dir = nil, -- notebook subdirectory for promoted notes

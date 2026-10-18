@@ -194,7 +194,10 @@ annotations.
 `<leader>me` writes a Markdown file with every annotation, grouped by label (with your
 names for them), each with its text, line numbers, tags and note, plus a **Detached** section
 for annotations whose text is gone. Inside a project it suggests
-`<root>/.earmark/export/<project>-<path-of-file>.md` (`export/` is gitignored). Set
+`<root>/.earmark/export/<project>-<path-of-file>.md` (`export/` is gitignored).
+`export.location = 'beside'` writes it next to the annotated file instead, as
+`<name>.earmark.md`; `{ 'project', 'beside' }` writes both (you're asked about the first),
+and a function `(buf, ctx) -> path` picks any place. Set
 `export.group_by` to `'position'`, `'tag'` or `'time'`, or `export.format` to a function
 `(list, ctx) -> lines` to write your own body. `:Earmark color #rrggbb` (or `reset`)
 recolours the label under the cursor in this file only.
@@ -273,7 +276,7 @@ require('earmark').setup({
   statusline = { digits = true, color_name = true },
   color_names = true, -- false, or function(hex) -> name|nil
   color_adapt = true, -- shift colours to suit a light (or any other) colour scheme
-  export = { group_by = 'label', include_detached = true, format = nil },
+  export = { group_by = 'label', include_detached = true, format = nil, location = 'project' }, -- or 'beside', a function, or a list
   zk = { dir = nil, open = true },
   note = {
     layout = 'float', -- 'float' | 'split'
@@ -511,7 +514,8 @@ Defaults that were decided overnight and are worth a second look:
 8. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
 9. What the statusline shows: the next label, counts, the warning count and the digit row.
 10. Storage is JSON only; SQLite and encryption are dropped.
-11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default.
+11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default; `export.location`
+    can put them next to the annotated files too. Confirmed 2026-10-18.
 12. `.earmark/names.json` (label names for the project) is committed, not ignored.
 13. Another label on exactly the same span is added to the annotation (an overlap) rather
     than replacing its label; `<leader>ml` replaces. Confirmed 2026-10-18, with a question

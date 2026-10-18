@@ -282,7 +282,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
                  show_empty = false },
   overlap = { style = 'blend',     -- or 'top'
               extra = 'split' },  -- or 'squares'
-  export = { group_by = 'label', include_detached = true, format = nil },
+  export = { group_by = 'label', include_detached = true, format = nil,
+             location = 'project' },  -- 'beside', a function, or a list
   zk = { dir = nil, open = true },
   statusline = { digits = true, color_name = true },
   color_names = true,      -- false, or function(hex) -> name|nil
@@ -293,6 +294,9 @@ text could be now (scored candidates), attach it to a selection, or erase.
 <
 `export.group_by` is 'label', 'position', 'tag' or 'time'; `export.format`
 is a function `(list, ctx) -> lines` that writes the body yourself.
+`export.location`: 'project' (<root>/.earmark/export/), 'beside' (next to
+the file, as <name>.earmark.md), a function `(buf, ctx) -> path`, or a list
+of these to write every one (you are asked about the first).
 
 ==============================================================================
 10. LABEL SETS AND SET FILES                                    *earmark-sets*
