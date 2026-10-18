@@ -352,6 +352,15 @@ function M.note()
   if h then note.open(0, h.a.id) end
 end
 
+function M.tags()
+  local h = hit_under_cursor()
+  if h then require('earmark.ui.tags_picker').open(0, h.a.id) end
+end
+
+function M.toggle_indicators()
+  require('earmark.render').toggle_indicators()
+end
+
 function M.peek()
   require('earmark.ui.hover').peek(vim.v.count)
 end
@@ -424,6 +433,8 @@ local function register_actions()
   A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
   A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })
   A({ name = 'toggle_hover', desc = 'automatic hover on/off', modes = { n = M.toggle_hover } })
+  A({ name = 'tags', desc = 'add/remove tags', modes = { n = M.tags } })
+  A({ name = 'toggle_indicators', desc = 'end-of-line indicators on/off', modes = { n = M.toggle_indicators } })
   A({ name = 'info', desc = 'annotation info as a message', cmd = M.info })
   A({ name = 'relabel', desc = 'change label', modes = { n = M.relabel } })
   A({ name = 'add_value', desc = 'add a label', modes = { n = M.add_value } })

@@ -632,7 +632,10 @@ function M.set_note(buf, id, text)
   if not a then return false end
   text = (text and text:match('%S')) and text or nil
   if a.note == text then return true end
+  local tags = require('earmark.tags')
+  local before = tags.parse(a.note).tags
   a.note = text
+  pcall(tags.remember, tags.added(before, tags.parse(text).tags))
   touch(buf, S, a, 'note')
   return true
 end
@@ -649,6 +652,8 @@ function M.set_tags(buf, id, tags)
       seen[t], list[#list + 1] = true, t
     end
   end
+  local tags = require('earmark.tags')
+  pcall(tags.remember, tags.added(a.tags, list))
   a.tags = #list > 0 and list or nil
   touch(buf, S, a, 'update')
   return true
@@ -697,6 +702,18 @@ function M.display_name(buf, value)
   if n then return n end
   local l = sets.label(value)
   return l and l.name or value.label
+end
+
+--- Tags used in this document (explicit and from notes): { tag = count }.
+function M.all_tags(buf)
+  local S = M.get(buf, { no_create = true })
+  local out = {}
+  for _, a in pairs(S and S.annos or {}) do
+    for _, t in ipairs((require('earmark.tags').of(a))) do
+      out[t] = (out[t] or 0) + 1
+    end
+  end
+  return out
 end
 
 --- Live annotations with positions, sorted by position (detached ones last, no position).

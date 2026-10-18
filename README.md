@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Tags, end-of-line indicators, pickers and project label-set files are next.
+Status: early. Navigation, pickers and project label-set files are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -47,6 +47,8 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
 | `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
 | `<leader>mh` | automatic hover on / off |
+| `<leader>mt` | add / remove tags of the annotation under cursor (list of every tag you've used) |
+| `<leader>mv` | end-of-line indicators on / off |
 
 ### The label prompt
 
@@ -89,6 +91,14 @@ while you move inside the annotation and goes away when you leave it, type, scro
 an operator. Overlapping annotations are listed innermost first (①, ②, …). Set
 `hover.show_when = 'always'` to see it on every annotation.
 
+### Indicators
+
+At the end of the line an annotation ends on, earmark shows a `✎` for each note (`✎✎✎ +2`
+past three), its `#tags` and its `@identifiers` as `[A]`, all in the label's colour. When
+the line is too long for them, they go on a virtual line below it instead. Nothing goes in
+the sign column. `<leader>mv` hides them (it changes only the view: nothing is re-read or
+saved). `indicators.show_empty = true` adds a dot for annotations without a note.
+
 ### What overlaps look like
 
 - Where annotations of **different labels** overlap, the overlap is drawn in the mix of their
@@ -105,7 +115,7 @@ an operator. Overlapping annotations are listed innermost first (①, ②, …).
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|toggle_hover|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -130,6 +140,7 @@ require('earmark').setup({
     next = '<leader>mn', prev = '<leader>mN',
     cycle_set = '<leader>ms', peek = '<leader>mi',
     note = '<leader>mm', toggle_hover = '<leader>mh',
+    tags = '<leader>mt', toggle_indicators = '<leader>mv',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
   prompt = {
@@ -149,6 +160,12 @@ require('earmark').setup({
     delay = 120, -- ms
     show_when = 'named_or_note', -- or 'always'
     max_width = 0.5, max_height = 0.5,
+  },
+  indicators = {
+    mode = 'eol', -- 'eol' | 'none'
+    max_pencils = 3, -- then "+N"
+    identifiers = true, -- show @ident tags as [ident]
+    show_empty = false,
   },
   overlap = { style = 'blend' }, -- 'blend' | 'top'
 })
@@ -173,7 +190,8 @@ A count resolves to the label whose key is that number, else to the label at tha
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
 `(earmark-cycle-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
-`(earmark-relabel)`, `(earmark-add-value)`, `(earmark-rename)`.
+`(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-relabel)`, `(earmark-add-value)`,
+`(earmark-rename)`.
 
 ## Storage
 
@@ -188,6 +206,8 @@ text itself is kept beside it as a snapshot (`<base>/snap/…`). On load, the sn
 diffed against the current text to re-anchor each annotation. Inside a project, `snap/` is
 listed in an auto-written `.earmark/.gitignore`, so committed records stay small; a fresh
 clone without snapshots re-anchors by quote and surrounding text instead.
+
+Tags you use are counted in `<storage_dir>/tags.json`, which feeds the `<leader>mt` list.
 
 Writes are atomic. A record that can't be parsed is left untouched, and saving for that
 buffer is disabled with a warning. v1 records (snapshot inline) are read as is and rewritten
