@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Overlap rendering, notes, tags, pickers and project label-set files are next.
+Status: early. Notes, hover, tags, pickers and project label-set files are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -70,8 +70,24 @@ elsewhere in the project (`<root>/.earmark/names.json`), then anywhere
 `prompt.ask_name = 'first_use'` (default) you are asked to name a label the first time you
 use it in a file; `'always'` and `'never'` do what they say.
 
-Annotating exactly the same span again changes its label. Overlapping annotations stack,
-with smaller spans drawn on top.
+Annotating exactly the same span again changes its label (with the same label it does
+nothing).
+
+### What overlaps look like
+
+- Where annotations of **different labels** overlap, the overlap is drawn in the mix of their
+  colours and underlined in the outer annotation's colour, so you see where each one starts
+  and ends.
+- Where annotations of **the same label** are nested (`this is` with `is` marked again), the
+  inner part keeps the colour and gets an underline in the text colour; three levels deep
+  it's a double underline.
+- An annotation's **second label** is an undercurl in that label's colour; labels **3 and
+  up** show as small squares `■` right after the span (`#` when `vim.g.have_nerd_font` is
+  `false`).
+- **Stale** annotations (text rewritten) are underdashed; **ambiguous** ones underdotted.
+
+Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
+top.
 
 `:Earmark {info|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
 
@@ -103,6 +119,7 @@ require('earmark').setup({
     ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
   },
   ui = { border = 'rounded' },
+  overlap = { style = 'blend' }, -- 'blend' | 'top'
 })
 ```
 

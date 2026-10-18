@@ -15,6 +15,7 @@ local api = vim.api
 local M = {}
 
 M.ns = api.nvim_create_namespace('earmark')
+M.ns_swatch = api.nvim_create_namespace('earmark_swatch')
 
 --- @class earmark.Annotation
 --- @field id string
@@ -39,6 +40,7 @@ M.ns = api.nvim_create_namespace('earmark')
 --- @field annos table<string, earmark.Annotation>
 --- @field ext table<string, integer>   annotation id -> extmark id
 --- @field by_ext table<integer, string> extmark id -> annotation id
+--- @field swatch table<string, integer> annotation id -> extmark of its label 3+ swatches
 --- @field names table<string, string>  "set/key" -> name of that label in this doc
 --- @field colors table<string, string> "set/key" -> colour override in this doc
 --- @field snap {lines: string[], pos: table<string, {s: integer[], e: integer[]}>}
@@ -104,6 +106,34 @@ local function render(buf, S, a, s, e)
   end
   local ext = api.nvim_buf_set_extmark(buf, M.ns, s[1], s[2], opts)
   S.ext[a.id], S.by_ext[ext] = ext, a.id
+  M.render_swatch(buf, S, a, e)
+end
+
+--- Labels 3 and up: one small square per label right after the span, in its colour.
+--- (The second label is an undercurl, drawn by `render.lua`.)
+function M.render_swatch(buf, S, a, e)
+  local old = S.swatch[a.id]
+  if #a.values < 3 or not e then
+    if old then
+      pcall(api.nvim_buf_del_extmark, buf, M.ns_swatch, old)
+      S.swatch[a.id] = nil
+    end
+    return
+  end
+  local glyph = vim.g.have_nerd_font == false and '#' or '■'
+  local chunks = {}
+  for i = 3, #a.values do
+    local hex = sets.color(a.values[i], S.colors)
+    chunks[#chunks + 1] = { glyph, hex and sets.fg_group(hex) or 'EarmarkUnknown' }
+  end
+  S.swatch[a.id] = api.nvim_buf_set_extmark(buf, M.ns_swatch, e[1], e[2], {
+    id = old,
+    virt_text = chunks,
+    virt_text_pos = 'inline',
+    right_gravity = false, -- text typed right after the span goes after the squares
+    undo_restore = true,
+    strict = false,
+  })
 end
 
 --- Current {s, e} of an annotation from its extmark, or nil if it is broken
@@ -123,6 +153,11 @@ local function drop_ext(buf, S, id)
   if ext then
     pcall(api.nvim_buf_del_extmark, buf, M.ns, ext)
     S.ext[id], S.by_ext[ext] = nil, nil
+  end
+  local sw = S.swatch[id]
+  if sw then
+    pcall(api.nvim_buf_del_extmark, buf, M.ns_swatch, sw)
+    S.swatch[id] = nil
   end
 end
 
@@ -390,7 +425,7 @@ function M.get(buf, opts)
   if opts and opts.no_create then return nil end
   local doc = store.doc(buf)
   if not doc then return nil end
-  S = { doc = doc, annos = {}, ext = {}, by_ext = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
+  S = { doc = doc, annos = {}, ext = {}, by_ext = {}, swatch = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
   M.state[buf] = S
   if api.nvim_buf_is_loaded(buf) then
     load(buf, S)
@@ -406,6 +441,7 @@ function M.reload(buf)
   if S then
     if S.timer then S.timer:close() end
     api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
+    api.nvim_buf_clear_namespace(buf, M.ns_swatch, 0, -1)
     M.state[buf] = nil
   end
   return M.get(buf)

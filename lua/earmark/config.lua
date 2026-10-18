@@ -43,6 +43,11 @@ M.defaults = {
   ui = {
     border = 'rounded', -- any 'winborder' value
   },
+  overlap = {
+    -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
+    -- outer one's colour. 'top': the smallest span simply covers the others.
+    style = 'blend',
+  },
   -- Buffers with these 'buftype's are never annotated.
   ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },
   debounce_ms = 200,
