@@ -65,7 +65,7 @@ T['digits list the other shades of the family'] = function()
   local lines = prompt_lines()
   local keys = {}
   for i = 2, #lines do
-    keys[#keys + 1] = lines[i]:match('■ (%d+)')
+    keys[#keys + 1] = lines[i]:match('██ (%d+)')
   end
   eq(keys, { '3', '13', '23', '33', '43', '53', '63', '73' })
 end
@@ -74,7 +74,7 @@ T['typing after <C-n>/<C-p> still narrows the list'] = function()
   h.open()
   h.cursor(1, 10)
   child.type_keys('ghiw', '1', '<C-n>', '<C-n>', '<C-p>', '<C-p>', '2')
-  eq(prompt_lines()[2]:match('■ (%d+)'), '12')
+  eq(prompt_lines()[2]:match('██ (%d+)'), '12')
   child.type_keys('<CR>')
   eq(h.texts(), { { text = 'brown', label = '12', status = 'ok' } })
 end

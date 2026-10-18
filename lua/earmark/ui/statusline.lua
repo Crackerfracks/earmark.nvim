@@ -80,6 +80,10 @@ function M.render(next_value, opts)
     if name ~= v.label then
       local fg = (api.nvim_get_hl(0, { name = host or 'StatusLine', link = false }).fg)
       parts[#parts + 1] = hl('EarmarkStlName', fg and ('#%06x'):format(fg) or nil, true) .. esc(name) .. reset
+    elseif config.options.statusline.color_name then
+      -- an unnamed label: say what colour it is
+      local cname = sets.color_name(v, S.colors)
+      if cname and hex then parts[#parts + 1] = hl('EarmarkStlSwatch' .. hex:sub(2), hex) .. esc(cname) .. reset end
     end
   end
   local n, notes, warn = 0, 0, 0

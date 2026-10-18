@@ -84,6 +84,7 @@ that opens it with this checkout, if you want to look before touching your confi
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
 | `<leader>mz` | promote the annotation under cursor to a zk note ([zk-nvim](https://github.com/zk-org/zk-nvim)) |
 | `<leader>mg{motion}` / `{Visual}<leader>mg` | move the annotation under cursor onto the motion / selection (note and labels stay) |
+| `<leader>mc` | the palette: every label of the set as a big colour patch with your name for it, its colour's name, hex and uses; `<CR>` makes it the label `gh` offers first, digits jump to a key, `r` names it, `<Tab>` switches sets |
 | `<leader>ms` | switch to the next label set (a popup shows its colours) |
 | `<leader>mS` | choose the label set from a list |
 | `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
@@ -100,6 +101,20 @@ colour while you type, and the list under the input narrows as you go:
 - digits match keys first, then the shades of that family (`3` → 3, 13, 23 …);
 - anything else matches keys, then label names (fuzzy);
 - empty input offers the last label, then the labels already used in this file.
+
+Each row shows the label's colour, its key, your name for it and the colour's name
+("Tangerine"). With a count (`3gh`) there's no prompt; a small hint under the cursor shows
+which label the count picked while you type the motion (`prompt.count_hint`).
+
+### Colour names
+
+Every colour gets a human name: the nearest of about 700 names from the
+[xkcd colour survey](https://xkcd.com/color/rgb/) (public domain), measured in OKLab, a
+perceptual colour space. Labels of one set get distinct names, so two shades of one
+family never both read "Coral". The names show in the prompt, the palette, the hover and,
+for a label you haven't named, the statusline. `color_names = false` hides them; a
+function `color_names = function(hex) return name end` supplies your own (return nil to
+fall back), and a set's label can carry `color_name = '…'`.
 
 | In the prompt | |
 |---|---|
@@ -199,7 +214,7 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -232,15 +247,18 @@ require('earmark').setup({
     reanchor = '<leader>mR', qf = '<leader>mq',
     export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg', zk = '<leader>mz',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
+    palette = '<leader>mc',
   },
   prompt = {
     width = 44, -- inner width of the prompt float
     max_rows = 8, -- candidate rows shown
     ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
+    count_hint = true, -- after 3gh, show which label the count picked
   },
   ui = { border = 'rounded' },
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
-  statusline = { digits = true },
+  statusline = { digits = true, color_name = true },
+  color_names = true, -- false, or function(hex) -> name|nil
   export = { group_by = 'label', include_detached = true, format = nil },
   zk = { dir = nil, open = true },
   note = {
@@ -346,7 +364,7 @@ sections = { lualine_x = { function() return require('earmark').statusline({ hl 
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
 `(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-reanchor)`, `(earmark-qf)`, `(earmark-diff)`,
 `(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-zk)`, `(earmark-relabel)`, `(earmark-add-value)`,
-`(earmark-rename)`.
+`(earmark-rename)`, `(earmark-palette)`.
 
 ## Storage
 
@@ -489,4 +507,6 @@ Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (o
 `<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`); set files are reloaded by checking their
 modification time on focus and buffer switches. New on 2026-10-18: `cw`, `ciw`, `s` or `C` on an
 annotation's first or last words keeps the new words in it (changing all of it keeps it too,
-marked stale) instead of shrinking or detaching it.
+marked stale) instead of shrinking or detaching it. Also new: colour names come from the xkcd
+colour survey (about 700 names after dropping crude and misspelled ones), the palette is on
+`<leader>mc`, and a count shows a hint with the label it picked while the motion is typed.
