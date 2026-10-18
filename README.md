@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. The public API and the zk bridge are next.
+Status: feature-complete for the 2026-10 rebuild plan; docs and polish next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -50,6 +50,7 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mD` | compare an annotation's original text with what it says now |
 | `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
+| `<leader>mz` | promote the annotation under cursor to a zk note ([zk-nvim](https://github.com/zk-org/zk-nvim)) |
 | `<leader>mg{motion}` / `{Visual}<leader>mg` | move the annotation under cursor onto the motion / selection (note and labels stay) |
 | `<leader>ms` | switch to the next label set (a popup shows its colours) |
 | `<leader>mS` | choose the label set from a list |
@@ -160,7 +161,7 @@ saved). `indicators.show_empty = true` adds a dot for annotations without a note
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -190,7 +191,7 @@ require('earmark').setup({
     tags = '<leader>mt', toggle_indicators = '<leader>mv',
     next_same = '<leader>m]', prev_same = '<leader>m[', jump = '<leader>mj',
     pick = '<leader>mp', pick_all = '<leader>mP', review = '<leader>md', diff = '<leader>mD',
-    export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg',
+    export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg', zk = '<leader>mz',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
   prompt = {
@@ -202,6 +203,7 @@ require('earmark').setup({
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
   statusline = { digits = true },
   export = { group_by = 'label', include_detached = true, format = nil },
+  zk = { dir = nil, open = true },
   note = {
     layout = 'float', -- 'float' | 'split'
     width = 0.6, max_width = 100, -- fraction of the window, and a column cap
@@ -299,7 +301,7 @@ sections = { lualine_x = { function() return require('earmark').statusline() end
 `(earmark-cycle-set)`, `(earmark-pick-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
 `(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`,
-`(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-relabel)`, `(earmark-add-value)`,
+`(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-zk)`, `(earmark-relabel)`, `(earmark-add-value)`,
 `(earmark-rename)`.
 
 ## Storage
@@ -336,16 +338,41 @@ as v2 on the next save.
 
 ## API
 
+Positions are 0-based `{ row, col }` (byte columns), spans end-exclusive; `buf` 0 is the
+current buffer. A value is `{ set = 'vivid', label = '3', choice = 'b'?, text = '…'? }`.
+
 ```lua
 local em = require('earmark')
-em.annotate(buf, { row, col }, { row, col }, { set = 'vivid', label = '3' }) -- 0-based, end-exclusive
-em.list(buf)  -- { { annotation = {...}, s = {r, c}, e = {r, c} }, ... }  (s/e nil when detached)
-em.at(buf, pos)
+local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
+em.list(buf)                -- { { annotation, s, e }, ... } sorted; s/e nil when detached
+em.at(buf, pos)             -- annotations at pos (default cursor), innermost first
+em.get(buf, a.id)
+em.set_note(buf, a.id, 'text #tag')   -- nil or '' clears
+em.set_tags(buf, a.id, { 'todo' })
+em.set_values(buf, a.id, { { set = 'vivid', label = '3' }, { set = 'review', label = 'q1', choice = 'b' } })
+em.erase(buf, { a.id })     -- to the trash
+em.restore(buf)             -- the last erased batch
+em.rename_label(buf, { set = 'vivid', label = '3' }, 'Vague')
+em.names(buf)               -- { ['vivid/3'] = 'Vague' }
+em.export(buf, { group_by = 'tag' })  -- Markdown lines
+em.pick({ scope = 'project', query = '#todo' })
+em.hover.show() ; em.hover.hide()
+em.statusline()
+em.on('Note', function(data) print(data.buf, data.action, vim.inspect(data.ids)) end)
 ```
 
 Events: `User EarmarkChanged` for every change, plus a specific `User Earmark<Action>`
 (`EarmarkAdd`, `EarmarkUpdate`, `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`,
-`EarmarkNote`, `EarmarkLoad`), all with `data = { buf, action, ids }`.
+`EarmarkNote`, `EarmarkLoad`), all with `data = { buf, action, ids }`. `em.on(name, fn)` is
+shorthand for those autocmds. Anything not listed here is internal and may change.
+
+### zk
+
+With [zk-nvim](https://github.com/zk-org/zk-nvim) installed, `<leader>mz` turns the annotation
+under the cursor into a zk note: the annotated text as a quote, the annotation's note, and a
+link back to the line. The note is titled after the note's first line (else the label name),
+created in the project's notebook (`zk.dir` picks a subdirectory) and opened in a split
+(`zk.open = false` to stay). The annotation keeps its note; the hover shows `↗ zk`.
 
 ## Develop
 

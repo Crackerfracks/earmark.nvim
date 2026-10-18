@@ -48,6 +48,7 @@ M.defaults = {
     export = '<leader>me', -- Markdown export of this file's annotations
     occurrences = '<leader>mo', -- annotate every other occurrence of the text under the cursor
     regrow = '<leader>mg', -- <leader>mg{motion}: move the annotation under the cursor onto the motion
+    zk = '<leader>mz', -- promote the annotation under the cursor to a zk note (zk-nvim)
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -99,6 +100,10 @@ M.defaults = {
     group_by = 'label', -- 'label' | 'position' | 'tag' | 'time'
     include_detached = true,
     format = nil, -- function(list, ctx) -> lines, replaces the body
+  },
+  zk = {
+    dir = nil, -- notebook subdirectory for promoted notes
+    open = true, -- open the new note in a split
   },
   statusline = {
     digits = true, -- numbered sets: show 1234567890 in the set's colours

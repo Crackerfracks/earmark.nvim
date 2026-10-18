@@ -234,7 +234,7 @@ local function cursor_pos()
 end
 
 --- Erase the annotation under the cursor (the smallest one, if several overlap).
-function M.erase()
+function M.erase_under_cursor()
   local hits = buffer.find(0, cursor_pos())
   if #hits == 0 then return notify('nothing under the cursor') end
   buffer.erase(0, { hits[1].a.id })
@@ -259,7 +259,7 @@ function M.clear()
   notify(('erased %d (restore with :Earmark restore)'):format(buffer.erase(0, ids)))
 end
 
-function M.restore()
+function M.restore_last()
   local n, missing = buffer.restore(0)
   if n == 0 then return notify('nothing to restore') end
   notify(('restored %d%s'):format(n, missing > 0 and (' (%d detached: text not found)'):format(missing) or ''))
@@ -383,11 +383,12 @@ local function picker()
 end
 
 --- `:Earmark pick [query]` / `<leader>mp`: annotations in this buffer.
-function M.pick(args)
+local function pick_file(args)
   local p = picker()
   local q = type(args) == 'table' and table.concat(args, ' ') or nil
   p.pick(p.filter(p.doc_items(0), q), { prompt = 'Annotations', on_choice = p.jump_to })
 end
+M.pick_file = pick_file
 
 --- `:Earmark pick_all [query]` / `<leader>mP`: annotations in the whole project.
 function M.pick_all(args)
@@ -529,10 +530,6 @@ end
 -- Export, occurrences, regrow, colour
 ---------------------------------------------------------------------------
 
-function M.export()
-  require('earmark.export').run(0)
-end
-
 --- `<leader>mo`: give every other occurrence of the annotated text the same labels.
 function M.occurrences()
   local h = hit_under_cursor()
@@ -619,6 +616,11 @@ function M.color(args)
   buffer.set_color(0, h.a.values[1], arg:lower())
 end
 
+function M.zk()
+  local h = hit_under_cursor()
+  if h then require('earmark.zk').promote(0, h.a.id) end
+end
+
 function M.tags()
   local h = hit_under_cursor()
   if h then require('earmark.ui.tags_picker').open(0, h.a.id) end
@@ -667,9 +669,88 @@ function M.list(buf)
   return buffer.list(buf or 0)
 end
 
---- Annotations at a position (default: cursor), smallest first.
+--- Annotations at a position (default: cursor), innermost first: { annotation, s, e }.
 function M.at(buf, pos)
-  return buffer.find(buf or 0, pos or cursor_pos())
+  return vim.tbl_map(function(h)
+    return { annotation = h.a, a = h.a, s = h.s, e = h.e }
+  end, buffer.find(buf or 0, pos or cursor_pos()))
+end
+
+--- An annotation by id in a buffer (nil if it isn't there).
+function M.get(buf, id)
+  return buffer.annotation(buf or 0, id)
+end
+
+--- Set (or clear with nil/'') the note of an annotation.
+function M.set_note(buf, id, text)
+  return buffer.set_note(buf or 0, id, text)
+end
+
+--- Replace the explicit tags of an annotation (tags written in its note stay).
+function M.set_tags(buf, id, list)
+  return buffer.set_tags(buf or 0, id, list)
+end
+
+--- Replace the labels of an annotation: { { set =, label =, choice =?, text =? }, ... }.
+function M.set_values(buf, id, values)
+  return buffer.set_values(buf or 0, id, values)
+end
+
+--- Move annotations to the trash (restorable). Returns how many.
+function M.erase(buf, ids)
+  return buffer.erase(buf or 0, ids)
+end
+
+--- Restore the most recently erased batch.
+function M.restore(buf)
+  return buffer.restore(buf or 0)
+end
+
+--- Name a label for one document (nil clears it).
+function M.rename_label(buf, value, name)
+  return buffer.rename_label(buf or 0, value, name)
+end
+
+--- Names given to labels in a document: { ["set/key"] = name }.
+function M.names(buf)
+  return buffer.names(buf or 0)
+end
+
+--- Markdown export lines (see README, Export).
+function M.export(buf, opts)
+  return require('earmark.export').markdown(buf or 0, opts)
+end
+
+--- Open the annotation picker: opts.scope = 'file' (default) | 'project', opts.query.
+function M.pick(opts)
+  opts = opts or {}
+  local q = opts.query and vim.split(opts.query, '%s+') or nil
+  if opts.scope == 'project' then return M.pick_all(q) end
+  return pick_file(q)
+end
+
+--- Show / hide the hover for what's under the cursor.
+M.hover = {
+  show = function()
+    local hits = buffer.find(0, cursor_pos())
+    if #hits > 0 then require('earmark.ui.hover').show(api.nvim_get_current_win(), hits, false) end
+  end,
+  hide = function()
+    require('earmark.ui.hover').hide()
+  end,
+}
+
+--- Run `fn(data)` on an earmark event: 'Changed', 'Add', 'Update', 'Erase', 'Restore',
+--- 'Repair', 'Note', 'Load' (or the full 'EarmarkNote'). data = { buf, action, ids }.
+--- Returns the autocmd id.
+function M.on(event, fn)
+  local pattern = event:match('^Earmark') and event or ('Earmark' .. event:sub(1, 1):upper() .. event:sub(2))
+  return api.nvim_create_autocmd('User', {
+    pattern = pattern,
+    callback = function(ev)
+      fn(ev.data)
+    end,
+  })
 end
 
 --- Statusline component: `%#..#` string for the current buffer (see README).
@@ -692,15 +773,15 @@ local function register_actions()
   end
   A({ name = 'operator', desc = 'annotate (count picks the label)', modes = { n = op_expr(), x = op_expr() }, expr = true, cmd = false })
   A({ name = 'line', desc = 'annotate line', modes = { n = op_expr('_') }, expr = true, cmd = false })
-  A({ name = 'erase', desc = 'erase annotation(s)', modes = { n = M.erase, x = M.erase_visual } })
+  A({ name = 'erase', desc = 'erase annotation(s)', modes = { n = M.erase_under_cursor, x = M.erase_visual } })
   A({ name = 'clear', desc = 'erase all annotations in this buffer', modes = { n = M.clear } })
-  A({ name = 'restore', desc = 'restore last erased', modes = { n = M.restore } })
+  A({ name = 'restore', desc = 'restore last erased', modes = { n = M.restore_last } })
   A({ name = 'next', desc = 'next annotation', modes = { n = M.next } })
   A({ name = 'prev', desc = 'previous annotation', modes = { n = M.prev } })
   A({ name = 'next_same', desc = 'next with the same label', modes = { n = function() require('earmark.nav').next_same() end } })
   A({ name = 'prev_same', desc = 'previous with the same label', modes = { n = function() require('earmark.nav').prev_same() end } })
   A({ name = 'jump', desc = 'jump to an annotation (flash)', modes = { n = function() require('earmark.nav').jump() end } })
-  A({ name = 'pick', desc = 'pick an annotation in this file', modes = { n = M.pick }, cmd = M.pick })
+  A({ name = 'pick', desc = 'pick an annotation in this file', modes = { n = pick_file }, cmd = pick_file })
   A({ name = 'pick_all', desc = 'pick an annotation in the project', modes = { n = M.pick_all }, cmd = M.pick_all })
   A({ name = 'review', desc = 'review stale/detached annotations', modes = { n = M.review } })
   A({ name = 'diff', desc = 'original vs current text', modes = { n = M.diff } })
@@ -708,7 +789,8 @@ local function register_actions()
   A({ name = 'qf', desc = 'annotations to quickfix', cmd = M.qf, complete = function() return { 'all' } end })
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
-  A({ name = 'export', desc = 'export annotations to Markdown', modes = { n = M.export } })
+  A({ name = 'export', desc = 'export annotations to Markdown', modes = { n = function() require('earmark.export').run(0) end } })
+  A({ name = 'zk', desc = 'promote to a zk note', modes = { n = M.zk } })
   A({ name = 'occurrences', desc = 'annotate other occurrences of this text', modes = { n = M.occurrences } })
   A({ name = 'regrow', desc = 'move the annotation onto a motion', modes = { n = M.regrow_expr, x = M.regrow_expr }, expr = true, cmd = false })
   A({ name = 'color', desc = 'colour this label differently in this file', cmd = M.color,
