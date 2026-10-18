@@ -260,8 +260,10 @@ function M.on_change(buf)
   buf = bufnr(buf)
   local S = M.state[buf]
   if not S or not api.nvim_buf_is_valid(buf) then return end
-  if M.repair(buf, S) then
-    M.refresh_snapshot(buf, S)
+  local repaired = M.repair(buf, S)
+  -- also keeps quotes and stale status current while text inside spans is edited
+  M.refresh_snapshot(buf, S)
+  if repaired then
     M.schedule_save(buf)
     emit(buf, 'repair', nil)
   end
@@ -702,6 +704,38 @@ function M.display_name(buf, value)
   if n then return n end
   local l = sets.label(value)
   return l and l.name or value.label
+end
+
+--- Move an annotation to [s, e) (re-attaching a detached one). Its original text is kept,
+--- so it reads as stale if the new text differs a lot.
+function M.reanchor(buf, id, s, e)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  local a = S and S.annos[id]
+  if not a or not s or (s[1] == e[1] and s[2] == e[2]) then return false end
+  local t = anchor.text(lines_of(buf))
+  local text = anchor.span_text(t, s, e)
+  a.status = status_for(a, text)
+  a.score, a.how = nil, nil
+  render(buf, S, a, s, e)
+  M.refresh_snapshot(buf, S)
+  touch(buf, S, a, 'repair')
+  return true
+end
+
+--- Accept an annotation's current text as what it annotates (clears stale/ambiguous).
+function M.accept(buf, id)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  local a = S and S.annos[id]
+  if not a then return false end
+  local s, e = live_pos(buf, S, id)
+  if not s then return false end
+  a.original_quote = a.quote
+  a.status, a.score, a.how = 'ok', nil, nil
+  render(buf, S, a, s, e)
+  touch(buf, S, a, 'update')
+  return true
 end
 
 --- Tags used in this document (explicit and from notes): { tag = count }.

@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Navigation, pickers and project label-set files are next.
+Status: early. Smarter re-anchoring and project label-set files are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -42,7 +42,12 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mx` | erase annotation under cursor (Visual: all in selection) |
 | `<leader>mX` | erase every annotation in the buffer (restorable) |
 | `<leader>mu` | restore the most recently erased |
-| `<leader>mn` / `<leader>mN` | next / previous annotation |
+| `<leader>mn` / `<leader>mN` | next / previous annotation (wraps; `{count}` skips) |
+| `<leader>m]` / `<leader>m[` | next / previous with the same label as the one under cursor |
+| `<leader>mj` | jump labels on every visible annotation ([flash.nvim](https://github.com/folke/flash.nvim); without it, the picker) |
+| `<leader>mp` / `<leader>mP` | pick an annotation in this file / in the whole project |
+| `<leader>md` | review the annotations whose text changed or disappeared |
+| `<leader>mD` | compare an annotation's original text with what it says now |
 | `<leader>ms` | switch to the next label set |
 | `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
 | `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
@@ -91,6 +96,31 @@ while you move inside the annotation and goes away when you leave it, type, scro
 an operator. Overlapping annotations are listed innermost first (①, ②, …). Set
 `hover.show_when = 'always'` to see it on every annotation.
 
+### Finding annotations
+
+`<leader>mp` and `<leader>mP` open your picker ([snacks.nvim](https://github.com/folke/snacks.nvim),
+then [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim), else `vim.ui.select`;
+set `picker` to force one). Each entry shows the label name, the text, tags and the first
+line of the note, so typing `#todo` or part of a note narrows it. The commands take a query
+up front:
+
+```vim
+:Earmark pick #todo status:stale
+:Earmark pick_all label:3 has:note budget
+:Earmark qf all #source          " into the quickfix list instead
+```
+
+Query words: `#tag`, `@ident`, `label:<key or name>`, `set:<name>`, `status:ok|stale|ambiguous|detached`,
+`has:note`, `has:tags`; anything else matches the text, name or note.
+
+`<leader>md` lists annotations that are **stale** (their text was rewritten),
+**ambiguous** (the text appears more than once) or **detached** (the text is gone). For each
+one you can jump to it, compare the original with the current text, accept the current text,
+attach it to a selection (`:'<,'>Earmark reanchor`), or erase it.
+
+`:Earmark scratch` reopens a scratch buffer you annotated earlier, with its text and
+annotations.
+
 ### Indicators
 
 At the end of the line an annotation ends on, earmark shows a `✎` for each note (`✎✎✎ +2`
@@ -115,7 +145,7 @@ saved). `indicators.show_empty = true` adds a dot for annotations without a note
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -141,6 +171,8 @@ require('earmark').setup({
     cycle_set = '<leader>ms', peek = '<leader>mi',
     note = '<leader>mm', toggle_hover = '<leader>mh',
     tags = '<leader>mt', toggle_indicators = '<leader>mv',
+    next_same = '<leader>m]', prev_same = '<leader>m[', jump = '<leader>mj',
+    pick = '<leader>mp', pick_all = '<leader>mP', review = '<leader>md', diff = '<leader>mD',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
   prompt = {
@@ -149,6 +181,7 @@ require('earmark').setup({
     ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
   },
   ui = { border = 'rounded' },
+  picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
   note = {
     layout = 'float', -- 'float' | 'split'
     width = 0.6, max_width = 100, -- fraction of the window, and a column cap
@@ -190,7 +223,8 @@ A count resolves to the label whose key is that number, else to the label at tha
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
 `(earmark-cycle-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
-`(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-relabel)`, `(earmark-add-value)`,
+`(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
+`(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`, `(earmark-relabel)`, `(earmark-add-value)`,
 `(earmark-rename)`.
 
 ## Storage
