@@ -30,9 +30,10 @@ Labels come from sets. The default sets are five generated palettes with
 keys 1-99 ("vivid", "pastel", "earth", "metal", "cyber"); you can define
 your own, in your config or in files (|earmark-sets|).
 
-When annotated text is rewritten the annotation is marked "stale"; when the
-text is deleted it is "detached", never dropped, and comes back if the text
-returns. Annotations are plain JSON inside your project (`<root>/.earmark/`),
+Changing an annotation's first or last words (`cw`, `ciw`, `s`, `C` ...)
+keeps the new words in it, even when you change all of it. When annotated
+text is rewritten the annotation is marked "stale"; when the text is deleted
+it is "detached", never dropped, and comes back if the text returns. Annotations are plain JSON inside your project (`<root>/.earmark/`),
 so they travel with the repository or notebook.
 
 Requires Neovim 0.11 or newer.

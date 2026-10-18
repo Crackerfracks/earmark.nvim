@@ -62,6 +62,7 @@ local function emit(buf, action, ids)
     local ok, err = pcall(api.nvim_exec_autocmds, 'User', { pattern = pattern, modeline = false, data = data })
     if not ok then log.error('User %s handler: %s', pattern, err) end
   end
+  if M.cache_positions then M.cache_positions(buf) end
 end
 M.emit = emit
 
@@ -94,6 +95,12 @@ local function render(buf, S, a, s, e)
     undo_restore = true,
     strict = false,
   }
+  -- while text replacing an edge of the span is typed (see `M.track`), that edge takes it in
+  local g = S.grow and S.grow[a.id]
+  if g then
+    opts.right_gravity = not g.start
+    opts.end_right_gravity = g.finish or false
+  end
   local old = S.ext[a.id]
   if old then
     -- an invalidated extmark can't be moved back to life; replace it
@@ -145,7 +152,8 @@ local function live_pos(buf, S, id)
   local m = api.nvim_buf_get_extmark_by_id(buf, M.ns, ext, { details = true })
   if not m[1] or (m[3] and m[3].invalid) then return nil end
   local s, e = { m[1], m[2] }, { m[3].end_row or m[1], m[3].end_col or m[2] }
-  if s[1] == e[1] and s[2] == e[2] and S.annos[id].quote ~= '' then return nil end
+  local growing = S.grow and S.grow[id]
+  if s[1] == e[1] and s[2] == e[2] and S.annos[id].quote ~= '' and not growing then return nil end
   return s, e
 end
 
@@ -439,6 +447,7 @@ function M.get(buf, opts)
   if api.nvim_buf_is_loaded(buf) then
     load(buf, S)
     if not S.snap.lines[1] then M.refresh_snapshot(buf, S) end
+    M.track(buf, S)
   end
   return S
 end
@@ -835,5 +844,126 @@ function M.rerender(buf)
 end
 
 M.live_pos = live_pos
+
+---------------------------------------------------------------------------
+-- Changing annotated text (c, s, C, Visual c)
+---------------------------------------------------------------------------
+
+-- An extmark only knows where text is deleted and inserted, so `cw` on the last word of
+-- an annotation used to leave the new word outside it (the end stays before text typed
+-- at it), `cw` on its first word did the same at the start, and changing all of it
+-- detached it. When a deletion takes an edge (or all) of a span and Insert mode follows,
+-- that edge grows with the typed text until Insert mode ends.
+
+local function in_insert()
+  local mode = api.nvim_get_mode().mode
+  return mode:sub(1, 1) == 'i' or mode:sub(1, 1) == 'R'
+end
+
+local function cmp(a, b)
+  if a[1] ~= b[1] then return a[1] < b[1] and -1 or 1 end
+  if a[2] ~= b[2] then return a[2] < b[2] and -1 or 1 end
+  return 0
+end
+
+--- Positions of every annotation as of the last change made outside Insert mode.
+local function cache_positions(buf, S)
+  local c = {}
+  for _, m in ipairs(api.nvim_buf_get_extmarks(buf, M.ns, 0, -1, { details = true })) do
+    local id = S.by_ext[m[1]]
+    if id and not m[4].invalid then c[id] = { s = { m[2], m[3] }, e = { m[4].end_row or m[2], m[4].end_col or m[3] } } end
+  end
+  S.pos_cache = c
+end
+
+--- Refresh the positions `M.track` compares deletions with (after annotations change).
+function M.cache_positions(buf)
+  local S = M.state[buf]
+  if S and S.tracking and api.nvim_buf_is_loaded(buf) and not in_insert() then cache_positions(buf, S) end
+end
+
+--- Insert mode ended: edges go back to normal gravity, and quotes/status catch up.
+function M.insert_left(buf)
+  local S = M.state[buf]
+  if not S then return end
+  if not S.grow then return cache_positions(buf, S) end
+  local grow = S.grow
+  S.grow = nil
+  for id in pairs(grow) do
+    local a = S.annos[id]
+    local s, e = live_pos(buf, S, id)
+    if a and s then
+      if cmp(s, e) == 0 then
+        detach(buf, S, a) -- nothing was typed
+      else
+        render(buf, S, a, s, e)
+      end
+    end
+  end
+  M.on_change(buf)
+  cache_positions(buf, S)
+  M.schedule_save(buf)
+end
+
+--- A deletion from `p` to `q` (old text) just happened outside Insert mode: note which
+--- annotations lost an edge. If Insert mode starts right after it (`c`, `s`, `C`), those
+--- edges take what is typed (`M.insert_entered`).
+local function on_delete(buf, S, tick, p, q)
+  local hits = {}
+  for id, pos in pairs(S.pos_cache or {}) do
+    local s, e = pos.s, pos.e
+    local whole = cmp(s, p) == 0 and cmp(e, q) == 0
+    local finish = cmp(s, p) < 0 and cmp(e, p) > 0 and cmp(e, q) == 0
+    local start = cmp(s, p) == 0 and cmp(s, q) < 0 and cmp(e, q) > 0
+    if whole or finish or start then hits[id] = { start = whole or start, finish = whole or finish } end
+  end
+  S.pending = next(hits) and { tick = tick, hits = hits, p = p } or nil
+end
+
+--- Insert mode started: if the change just before it took an edge of annotations, grow them.
+function M.insert_entered(buf)
+  local S = M.state[buf]
+  local pending = S and S.pending
+  if not pending then return end
+  S.pending = nil
+  -- (b:changedtick moves on once more after on_bytes reports the deletion)
+  if api.nvim_buf_get_changedtick(buf) - pending.tick > 1 then return end
+  local cur = api.nvim_win_get_cursor(0)
+  if buf ~= api.nvim_get_current_buf() or cur[1] - 1 ~= pending.p[1] or cur[2] ~= pending.p[2] then return end
+  S.grow = S.grow or {}
+  for id, g in pairs(pending.hits) do
+    local a = S.annos[id]
+    if a and (a.status ~= 'detached' or (g.start and g.finish)) then
+      S.grow[id] = g
+      local s, e = live_pos(buf, S, id)
+      if not s then s, e = pending.p, pending.p end -- the whole span went: start over where it was
+      if a.status == 'detached' then a.status = 'ok' end
+      render(buf, S, a, s, e)
+    end
+  end
+end
+
+--- Watch a buffer's changes (once per load).
+function M.track(buf, S)
+  if S.tracking then return end
+  S.tracking = api.nvim_buf_attach(buf, false, {
+    on_bytes = function(_, b, tick, sr, sc, _, oer, oec, old_len, _, _, new_len)
+      if M.state[b] ~= S then return true end
+      if in_insert() then return end
+      S.pending = nil
+      if old_len > 0 and new_len == 0 then
+        local q = { sr + oer, oer == 0 and sc + oec or oec }
+        on_delete(b, S, tick, { sr, sc }, q)
+      end
+      vim.schedule(function()
+        if api.nvim_buf_is_valid(b) and M.state[b] == S and not in_insert() then cache_positions(b, S) end
+      end)
+    end,
+    on_detach = function()
+      S.tracking = false
+    end,
+  })
+  cache_positions(buf, S)
+end
 
 return M
