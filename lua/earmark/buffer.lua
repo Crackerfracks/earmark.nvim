@@ -56,6 +56,7 @@ end
 
 --- Fire `User EarmarkChanged` and the specific `User Earmark<Action>` event.
 local function emit(buf, action, ids)
+  if buf == 0 then buf = api.nvim_get_current_buf() end
   local data = { buf = buf, action = action, ids = ids }
   for _, pattern in ipairs({ 'EarmarkChanged', 'Earmark' .. action:sub(1, 1):upper() .. action:sub(2) }) do
     local ok, err = pcall(api.nvim_exec_autocmds, 'User', { pattern = pattern, modeline = false, data = data })
@@ -482,8 +483,10 @@ end
 -- Editing operations
 ---------------------------------------------------------------------------
 
---- Annotate [s, e) with `value`. If an annotation with exactly this span exists, its first
---- value is replaced instead (re-colouring). Returns the annotation.
+--- Annotate [s, e) with `value`. If an annotation with exactly this span exists, `value`
+--- is added to it as another label instead (so the two show as an overlap). Returns the
+--- annotation, plus 'added' when it went onto an existing annotation or 'same' when that
+--- annotation had the label already.
 function M.add(buf, s, e, value)
   local S = M.get(buf)
   if not S then return nil end
@@ -491,15 +494,16 @@ function M.add(buf, s, e, value)
   for id, a in pairs(S.annos) do
     local ls, le = live_pos(buf, S, id)
     if ls and ls[1] == s[1] and ls[2] == s[2] and le[1] == e[1] and le[2] == e[2] then
-      local v1 = a.values[1]
-      if v1.set == value.set and v1.label == value.label and v1.choice == value.choice then return a end
-      a.values[1] = value
+      for _, v in ipairs(a.values) do
+        if v.set == value.set and v.label == value.label and v.choice == value.choice then return a, 'same' end
+      end
+      a.values[#a.values + 1] = value
       a.updated = now()
       render(buf, S, a, s, e)
       M.refresh_snapshot(buf, S)
       M.schedule_save(buf)
       emit(buf, 'update', { id })
-      return a
+      return a, 'added'
     end
   end
   local t = anchor.text(lines_of(buf))
@@ -562,9 +566,11 @@ function M.erase(buf, ids)
   if not S or #ids == 0 then return 0 end
   M.refresh_snapshot(buf, S)
   local batch, t = store.uuid(), now()
+  local done = {}
   for _, id in ipairs(ids) do
     local a = S.annos[id]
     if a then
+      done[#done + 1] = id
       local entry = serialize(a)
       entry.erased, entry.batch = t, batch
       S.trash[#S.trash + 1] = entry
@@ -575,9 +581,26 @@ function M.erase(buf, ids)
   while #S.trash > 500 do
     table.remove(S.trash, 1)
   end
+  if #done == 0 then return 0 end
   M.schedule_save(buf)
-  emit(buf, 'erase', ids)
-  return #ids
+  emit(buf, 'erase', done)
+  return #done
+end
+
+--- Set the note of an erased annotation still in the trash (a note being edited when its
+--- annotation was erased). Returns true if it was found.
+function M.set_trashed_note(buf, id, text)
+  local S = M.get(bufnr(buf), { no_create = true })
+  if not S then return false end
+  for i = #S.trash, 1, -1 do
+    local a = S.trash[i]
+    if a.id == id then
+      a.note = (text and text:match('%S')) and text or nil
+      M.schedule_save(bufnr(buf))
+      return true
+    end
+  end
+  return false
 end
 
 --- Restore the most recently erased batch. Returns restored count and how many of those

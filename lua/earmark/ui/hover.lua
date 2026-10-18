@@ -146,8 +146,13 @@ local function config_for(src_win, hits, lines, focus)
     rows = rows + math.max(1, math.ceil(vim.fn.strdisplaywidth(l) / w))
   end
   local h = math.max(1, math.min(rows, math.floor(H * o.max_height)))
-  local inner = hits[1]
-  local cfg = place.for_span(src_win, inner.s, inner.e, w, h, { bordered = true, min_h = math.min(h, 3) })
+  -- below (or above) every annotation listed, so it never covers one of them
+  local s, e = hits[1].s, hits[1].e
+  for _, x in ipairs(hits) do
+    if x.s[1] < s[1] or (x.s[1] == s[1] and x.s[2] < s[2]) then s = x.s end
+    if x.e[1] > e[1] or (x.e[1] == e[1] and x.e[2] > e[2]) then e = x.e end
+  end
+  local cfg = place.for_span(src_win, s, e, w, h, { bordered = true, min_h = math.min(h, 3) })
   cfg.side = nil
   cfg.zindex = 45
   cfg.focusable = focus or false

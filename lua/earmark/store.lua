@@ -172,9 +172,14 @@ end
 function M.snap_path(record)
   local base, rest = record:match('^(.*/%.earmark)/docs/(.*)%.json$')
   if base then return base .. '/snap/' .. rest .. '.snap' end
-  local prefix, kind, rest2 = record:match('^(.*)/(%a+)/(.*)%.json$')
-  if prefix and (kind == 'files' or kind == 'scratch') then
-    return prefix .. '/snap/' .. kind .. '/' .. rest2 .. '.snap'
+  -- outside a project: <storage_dir>/{files,scratch}/<key>.json (the key itself may contain
+  -- directories called "files" or "scratch", so match the storage dir, not the last one)
+  local dir = config.options.storage_dir
+  for _, kind in ipairs({ 'files', 'scratch' }) do
+    local prefix = dir .. '/' .. kind .. '/'
+    if record:sub(1, #prefix) == prefix and record:sub(-5) == '.json' then
+      return dir .. '/snap/' .. kind .. '/' .. record:sub(#prefix + 1, -6) .. '.snap'
+    end
   end
   return nil
 end

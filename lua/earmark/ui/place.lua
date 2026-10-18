@@ -99,4 +99,28 @@ function M.border_opts(border, title, footer)
   return out
 end
 
+--- Called on WinLeave of a float that should close when you leave it. Leaving for an
+--- operator (a flash.nvim remote yank, `yr`, from inside the float) doesn't count: earmark
+--- waits until the operator is done and only calls `on_gone` if you didn't come back.
+function M.on_leave(win, on_gone)
+  if not vim.fn.mode(1):match('^no') then return vim.schedule(on_gone) end
+  local timer = vim.uv.new_timer()
+  timer:start(100, 100, vim.schedule_wrap(function()
+    if not api.nvim_win_is_valid(win) or api.nvim_get_current_win() == win then
+      timer:stop()
+      timer:close()
+      if not api.nvim_win_is_valid(win) then on_gone() end
+      return
+    end
+    if vim.fn.mode(1):match('^no') then return end
+    timer:stop()
+    timer:close()
+    -- give a remote operation a moment to restore the window it started from
+    vim.defer_fn(function()
+      if api.nvim_win_is_valid(win) and api.nvim_get_current_win() == win then return end
+      on_gone()
+    end, 50)
+  end))
+end
+
 return M

@@ -44,7 +44,9 @@ local function footer(E)
   if not a then return nil end
   local q = (a.quote or ''):gsub('%s+', ' ')
   if vim.fn.strchars(q) > 30 then q = vim.fn.strcharpart(q, 0, 29) .. '…' end
-  return (' "%s" · ,s split '):format(q)
+  local ll = vim.g.maplocalleader or '\\'
+  ll = ll == ' ' and '<Space>' or ll
+  return (' "%s" · %ss split '):format(q, ll)
 end
 
 --- Save the editor's text to the annotation if it changed. Returns true when saved.
@@ -54,7 +56,13 @@ function M.save(E, quiet)
   if not vim.bo[E.buf].modified then return false end
   local ok = buffer.annotation(E.src_buf, E.id) and buffer.set_note(E.src_buf, E.id, text_of(E))
   if not ok then
-    notify('the annotation for this note is gone (erased?); note not saved', vim.log.levels.WARN)
+    if buffer.set_trashed_note(E.src_buf, E.id, text_of(E)) then
+      vim.bo[E.buf].modified = false
+      notify(('this annotation was erased; the note is kept with it (%s brings both back)'):format(
+        (config.options.keys and config.options.keys.restore) or ':Earmark restore'))
+      return true
+    end
+    notify('the annotation for this note is gone; note not saved', vim.log.levels.WARN)
     return false
   end
   vim.bo[E.buf].modified = false
@@ -208,8 +216,12 @@ local function autocmds(E)
     buffer = E.buf,
     callback = function()
       if E.switching or E.closing then return end
-      M.save(E, true)
-      if E.layout == 'float' then vim.schedule(function() M.close(E) end) end
+      if E.layout ~= 'float' then return M.save(E, true) end
+      -- a float closes once you've left it (not while an operator such as a flash remote
+      -- yank runs from inside it)
+      place.on_leave(E.win, function()
+        if not E.closing then M.close(E) end
+      end)
     end,
   })
 end

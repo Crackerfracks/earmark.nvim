@@ -71,6 +71,8 @@ that opens it with this checkout, if you want to look before touching your confi
 | `<leader>mj` | jump labels on every visible annotation ([flash.nvim](https://github.com/folke/flash.nvim); without it, the picker) |
 | `<leader>mp` / `<leader>mP` | pick an annotation in this file / in the whole project |
 | `<leader>md` | review the annotations whose text changed or disappeared |
+| `{Visual}<leader>mR` | attach the annotation chosen in the review list to the selection |
+| `<leader>mq` | this file's annotations into the quickfix list |
 | `<leader>mD` | compare an annotation's original text with what it says now |
 | `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
@@ -82,7 +84,7 @@ that opens it with this checkout, if you want to look before touching your confi
 | `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
 | `<leader>mh` | automatic hover on / off |
 | `<leader>mt` | add / remove tags of the annotation under cursor (list of every tag you've used) |
-| `<leader>mv` | end-of-line indicators on / off |
+| `<leader>mv` | show / hide `#tags` at the ends of lines (hidden at startup) |
 
 ### The label prompt
 
@@ -96,20 +98,24 @@ colour while you type, and the list under the input narrows as you go:
 | In the prompt | |
 |---|---|
 | `<CR>` | apply the selected label |
-| `<Tab>` | apply and name it (the name stage); `<Tab>`/`<CR>` there accepts the name |
+| `<Tab>` | like `<CR>`, then name the label (the name stage); `<Tab>`/`<CR>` there accepts the name |
 | `<S-Tab>` | back to the label stage |
 | `<C-n>` `<C-p>` / `<Down>` `<Up>` (Normal: `j` `k`) | move through candidates |
 | `<C-s>` | try the next label set |
-| `<Esc>` | Normal mode (edit the query with the usual motions); `<Esc>`/`q` again cancels |
+| `<Esc>` | Normal mode (edit the query with the usual motions); `<Esc>`/`q` again cancels. In the name stage after choosing a label, `<Esc>` applies the label without naming it |
 
-The name stage is pre-filled from what you called that label before: in this file, then
-elsewhere in the project (`<root>/.earmark/names.json`), then anywhere
-(`<storage_dir>/names.json`). An empty name clears it for this file. With
-`prompt.ask_name = 'first_use'` (default) you are asked to name a label the first time you
-use it in a file; `'always'` and `'never'` do what they say.
+Names are per file, and the project remembers them: once you name label 3 "vague" in one
+file, the first label 3 you use in any other file of that project is called "vague" there
+too (`<root>/.earmark/names.json`, the directory default). Rename or clear it in that file
+with `<leader>mr`. The name stage is pre-filled from what you called the label before: in
+this file, then elsewhere in the project, then anywhere (`<storage_dir>/names.json`). An
+empty name clears it for this file. With `prompt.ask_name = 'first_use'` (default) you are
+asked to name a numbered label the first time you use it in a project; `'always'` and
+`'never'` do what they say.
 
-Annotating exactly the same span again changes its label (with the same label it does
-nothing).
+Annotating exactly the same span again with another label adds that label to it, so both
+show as an overlap (`<leader>ml` changes the label instead); with a label it already has,
+nothing changes.
 
 ### Notes and the hover
 
@@ -146,7 +152,7 @@ Query words: `#tag`, `@ident`, `label:<key or name>`, `set:<name>`, `status:ok|s
 **ambiguous** (the text appears more than once) or **detached** (the text is gone). For each
 one you can jump to it, compare the original with the current text, accept the current text,
 move it to one of the places its text could be now (exact or close matches, scored), attach
-it to a selection (`:'<,'>Earmark reanchor`), or erase it.
+it to a selection (`{Visual}<leader>mR`), or erase it.
 
 `:Earmark scratch` reopens a scratch buffer you annotated earlier, with its text and
 annotations.
@@ -164,10 +170,12 @@ recolours the label under the cursor in this file only.
 ### Indicators
 
 At the end of the line an annotation ends on, earmark shows a `✎` for each note (`✎✎✎ +2`
-past three), its `#tags` and its `@identifiers` as `[A]`, all in the label's colour. When
+past three), in the label's colour. `<leader>mv` adds its `#tags` and its `@identifiers` as
+`[A]` (hidden when Neovim starts; `indicators.tags = true` shows them from the start). When
 the line is too long for them, they go on a virtual line below it instead. Nothing goes in
-the sign column. `<leader>mv` hides them (it changes only the view: nothing is re-read or
-saved). `indicators.show_empty = true` adds a dot for annotations without a note.
+the sign column, and toggling changes only the view: nothing is re-read or saved.
+`indicators.show_empty = true` adds a dot for annotations without a note;
+`indicators.mode = 'none'` shows nothing at all.
 
 ### What overlaps look like
 
@@ -215,6 +223,7 @@ require('earmark').setup({
     tags = '<leader>mt', toggle_indicators = '<leader>mv',
     next_same = '<leader>m]', prev_same = '<leader>m[', jump = '<leader>mj',
     pick = '<leader>mp', pick_all = '<leader>mP', review = '<leader>md', diff = '<leader>mD',
+    reanchor = '<leader>mR', qf = '<leader>mq',
     export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg', zk = '<leader>mz',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
@@ -242,6 +251,7 @@ require('earmark').setup({
   },
   indicators = {
     mode = 'eol', -- 'eol' | 'none'
+    tags = false, -- #tags and [identifiers] too (<leader>mv toggles)
     max_pencils = 3, -- then "+N"
     identifiers = true, -- show @ident tags as [ident]
     show_empty = false,
@@ -306,9 +316,13 @@ doesn't track): a swatch and the label the next `gh` uses, the number of annotat
 notes, `⚠` with detached/ambiguous ones, and for numbered sets the digits `1234567890` in
 their colours.
 
+Pass the highlight group of the section it sits in as `hl`: its colours then sit on that
+section's background, and the section's colours come back after them (without it, they
+reset to `StatusLine`).
+
 ```lua
 -- mini.statusline, inside your content.active function
-local earmark = require('earmark').statusline()
+local earmark = require('earmark').statusline({ hl = 'MiniStatuslineFileinfo' })
 return MiniStatusline.combine_groups({
   { hl = mode_hl, strings = { mode } },
   { hl = 'MiniStatuslineFilename', strings = { filename } },
@@ -316,15 +330,15 @@ return MiniStatusline.combine_groups({
   { hl = 'MiniStatuslineFileinfo', strings = { earmark, fileinfo } },
 })
 
--- lualine
-sections = { lualine_x = { function() return require('earmark').statusline() end } }
+-- lualine: the group of the section it's in (`:Inspect` over the section shows it)
+sections = { lualine_x = { function() return require('earmark').statusline({ hl = 'lualine_x_normal' }) end } }
 ```
 
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
 `(earmark-cycle-set)`, `(earmark-pick-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
-`(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`,
+`(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-reanchor)`, `(earmark-qf)`, `(earmark-diff)`,
 `(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-zk)`, `(earmark-relabel)`, `(earmark-add-value)`,
 `(earmark-rename)`.
 
@@ -381,7 +395,7 @@ em.names(buf)               -- { ['vivid/3'] = 'Vague' }
 em.export(buf, { group_by = 'tag' })  -- Markdown lines
 em.pick({ scope = 'project', query = '#todo' })
 em.hover.show() ; em.hover.hide()
-em.statusline()
+em.statusline({ hl = 'MiniStatuslineFileinfo' })  -- hl: the section it sits in
 em.on('Note', function(data) print(data.buf, data.action, vim.inspect(data.ids)) end)
 ```
 
@@ -435,19 +449,25 @@ docs test checks that every default key and subcommand is in this README and in
 ## Status (2026-10-19)
 
 The 2026-10 rebuild plan is done: milestones M0 to M10 landed as stacked draft PRs (#1 to
-#11), each with its tests (160 in total, all passing). The plan is in `docs/PLAN.md`.
+#11), and #12 fixes what an audit against the old Numhi conversations found (names carrying
+across a project's files, a second label on the same word showing as an overlap, `<Esc>`
+while naming, flash remote operations from the prompt or a note, the statusline inside other
+sections, linewise erase, tags hidden at startup). 173 tests pass on Neovim 0.11 and 0.12.
+The plan is in `docs/PLAN.md`.
 
 Defaults that were decided overnight and are worth a second look:
 
-1. Naming: the prompt asks for a name the first time a label is used in a file
-   (`prompt.ask_name = 'first_use'`); `'always'` makes it ask every time.
+1. Naming: the prompt asks for a name the first time a label is used in a project
+   (`prompt.ask_name = 'first_use'`), and that name then applies in the project's other
+   files; `'always'` makes it ask every time.
 2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line (`@A`
    in the hover, where Markdown would hide brackets).
 3. Overlaps: mixed colours with the outer colour as underline; a second label is an
    undercurl, labels 3 and up are small squares after the span (not a gradient or
    interleave).
 4. The hover header is the label colour as text (`▍ name`), not a filled bar.
-5. The indicator toggle has two states (on / off); hiding identifiers is config only.
+5. `<leader>mv` shows or hides tags and identifiers at the ends of lines (hidden at
+   startup); pencils always show.
 6. No per-background palettes.
 7. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
 8. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
@@ -455,6 +475,8 @@ Defaults that were decided overnight and are worth a second look:
 10. Storage is JSON only; SQLite and encryption are dropped.
 11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default.
 12. `.earmark/names.json` (label names for the project) is committed, not ignored.
+13. Another label on exactly the same span is added to the annotation (an overlap) rather
+    than replacing its label; `<leader>ml` replaces.
 
 Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (one typo) stays
 "ok" rather than "stale"; `<leader>mg` accepts the new text as the annotation's text;

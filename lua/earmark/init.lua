@@ -57,7 +57,7 @@ local function should_name(buf)
     if mode == 'always' then return true end
     local key = value.set .. '/' .. value.label
     asked[buf] = asked[buf] or {}
-    if asked[buf][key] or not sets.is_numbered(value.set) or names().known(buf, value) then return false end
+    if asked[buf][key] or not sets.is_numbered(value.set) or names().known_here(buf, value) then return false end
     asked[buf][key] = true
     return true
   end
@@ -92,12 +92,23 @@ local function region(motion)
   return { { s = s, e = e } }
 end
 
+local function key_name(action)
+  local k = config.options.keys and config.options.keys[action]
+  return k or (':Earmark ' .. action)
+end
+
 local function apply(buf, spans, value)
-  local n = 0
+  local n, onto = 0, 0
   for _, r in ipairs(spans) do
-    if buffer.add(buf, r.s, r.e, value) then n = n + 1 end
+    local a, how = buffer.add(buf, r.s, r.e, value)
+    if a then n = n + 1 end
+    if how == 'added' then onto = onto + 1 end
   end
   if n > 0 then last_value = value end
+  if onto > 0 then
+    notify(('added %s to the annotation already there (%s changes its label instead)'):format(
+      buffer.display_name(buf, value), key_name('relabel')))
+  end
   return n
 end
 
@@ -152,14 +163,19 @@ end
 --- 'operatorfunc' target. Public so it can be referenced as v:lua.
 function M.operatorfunc(motion)
   vim.on_key(nil, capture_ns)
-  local spans = region(motion)
+  local spans = vim.tbl_filter(function(r)
+    return r.s[1] ~= r.e[1] or r.s[2] ~= r.e[2]
+  end, region(motion))
   if replay then
     local want = replay
     replay = nil
     apply(0, same_spans(spans, want) and spans or want, pending)
     return
   end
-  if #spans == 0 then return end
+  if #spans == 0 then
+    want_prompt, op = false, nil
+    return notify('nothing to annotate there (no text)')
+  end
   if want_prompt then
     want_prompt = false
     local o = op
@@ -233,30 +249,53 @@ local function cursor_pos()
   return { c[1] - 1, c[2] }
 end
 
+local function erased(n)
+  if n == 0 then return notify('nothing to erase') end
+  notify(('erased %d (restore with %s)'):format(n, key_name('restore')))
+end
+
 --- Erase the annotation under the cursor (the smallest one, if several overlap).
 function M.erase_under_cursor()
   local hits = buffer.find(0, cursor_pos())
   if #hits == 0 then return notify('nothing under the cursor') end
-  buffer.erase(0, { hits[1].a.id })
+  erased(buffer.erase(0, { hits[1].a.id }))
 end
 
---- Erase every annotation overlapping the visual selection.
+--- Erase every annotation overlapping the visual selection (whole lines in linewise
+--- Visual, the column range on each line in blockwise Visual).
 function M.erase_visual()
+  local mode = vim.fn.mode()
   local s, e = vim.fn.getpos('v'), vim.fn.getpos('.')
   if s[2] > e[2] or (s[2] == e[2] and s[3] > e[3]) then s, e = e, s end
   api.nvim_feedkeys(vim.keycode('<Esc>'), 'nx', false)
-  local hits = buffer.find(0, { s[2] - 1, s[3] - 1 }, { e[2] - 1, e[3] })
-  local ids = vim.tbl_map(function(h)
+  local hits
+  if mode == 'V' then
+    local last = api.nvim_buf_get_lines(0, e[2] - 1, e[2], false)[1] or ''
+    hits = buffer.find(0, { s[2] - 1, 0 }, { e[2] - 1, math.max(#last, 1) })
+  elseif mode == '\22' then
+    local c1, c2 = math.min(s[3], e[3]), math.max(s[3], e[3])
+    local seen = {}
+    hits = {}
+    for row = s[2] - 1, e[2] - 1 do
+      for _, h in ipairs(buffer.find(0, { row, c1 - 1 }, { row, c2 })) do
+        if not seen[h.a.id] then
+          seen[h.a.id] = true
+          hits[#hits + 1] = h
+        end
+      end
+    end
+  else
+    hits = buffer.find(0, { s[2] - 1, s[3] - 1 }, { e[2] - 1, e[3] })
+  end
+  erased(buffer.erase(0, vim.tbl_map(function(h)
     return h.a.id
-  end, hits)
-  notify(('erased %d'):format(buffer.erase(0, ids)))
+  end, hits)))
 end
 
 function M.clear()
-  local ids = vim.tbl_map(function(x)
+  erased(buffer.erase(0, vim.tbl_map(function(x)
     return x.annotation.id
-  end, buffer.list(0))
-  notify(('erased %d (restore with :Earmark restore)'):format(buffer.erase(0, ids)))
+  end, buffer.list(0))))
 end
 
 function M.restore_last()
@@ -369,8 +408,16 @@ end
 --- picks the n-th overlapping one, innermost first.
 function M.note()
   local note = require('earmark.ui.note')
-  if note.active then return note.close() end
-  local h = hit_under_cursor()
+  local h
+  if note.active then
+    local hits = buffer.find(0, cursor_pos())
+    h = hits[math.min(math.max(1, vim.v.count), math.max(#hits, 1))]
+  else
+    h = hit_under_cursor()
+  end
+  -- the same key closes the open note, unless the cursor is on another annotation (a
+  -- split note stays open while you work in the text): then that one's note opens
+  if note.active and (not h or h.a.id == note.active.id) then return note.close() end
   if h then note.open(0, h.a.id) end
 end
 
@@ -419,6 +466,12 @@ function M.reanchor(_, range)
   end
   if vim.fn.visualmode() == 'V' then s[3], ec = 1, #line end
   require('earmark.ui.review').reanchor_to_selection(0, { s[2] - 1, s[3] - 1 }, { e[2] - 1, ec })
+end
+
+--- `{Visual}<leader>mR`: the same as `:'<,'>Earmark reanchor`.
+function M.reanchor_visual()
+  api.nvim_feedkeys(vim.keycode('<Esc>'), 'nx', false)
+  M.reanchor(nil, { vim.fn.line("'<"), vim.fn.line("'>") })
 end
 
 --- `:Earmark check`: one line per annotation (status, placement score, how it was placed,
@@ -645,8 +698,8 @@ function M.info()
   for _, h in ipairs(hits) do
     local a = h.a
     local names = vim.tbl_map(function(v)
-      local l = sets.label(v)
-      return ('%s:%s'):format(v.set, l and l.name or v.label .. '?')
+      local name = sets.label(v) and buffer.display_name(0, v) or (v.label .. '?')
+      return ('%s (%s·%s)'):format(name, v.set, v.label)
     end, a.values)
     out[#out + 1] = ('%s  [%s]  %q'):format(table.concat(names, ', '), a.status, a.quote)
     if a.original_quote ~= a.quote then out[#out + 1] = ('  originally: %q'):format(a.original_quote) end
@@ -754,8 +807,9 @@ function M.on(event, fn)
 end
 
 --- Statusline component: `%#..#` string for the current buffer (see README).
-function M.statusline()
-  return require('earmark.ui.statusline').render(last_value)
+--- opts.hl: highlight group of the section it goes in (its background is kept).
+function M.statusline(opts)
+  return require('earmark.ui.statusline').render(last_value, opts)
 end
 
 ---------------------------------------------------------------------------
@@ -785,8 +839,8 @@ local function register_actions()
   A({ name = 'pick_all', desc = 'pick an annotation in the project', modes = { n = M.pick_all }, cmd = M.pick_all })
   A({ name = 'review', desc = 'review stale/detached annotations', modes = { n = M.review } })
   A({ name = 'diff', desc = 'original vs current text', modes = { n = M.diff } })
-  A({ name = 'reanchor', desc = 'attach an annotation to the selection', cmd = M.reanchor })
-  A({ name = 'qf', desc = 'annotations to quickfix', cmd = M.qf, complete = function() return { 'all' } end })
+  A({ name = 'reanchor', desc = 'attach an annotation to the selection', modes = { x = M.reanchor_visual }, cmd = M.reanchor })
+  A({ name = 'qf', desc = 'annotations to quickfix', modes = { n = function() M.qf({}) end }, cmd = M.qf, complete = function() return { 'all' } end })
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
   A({ name = 'export', desc = 'export annotations to Markdown', modes = { n = function() require('earmark.export').run(0) end } })
@@ -801,7 +855,7 @@ local function register_actions()
   A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })
   A({ name = 'toggle_hover', desc = 'automatic hover on/off', modes = { n = M.toggle_hover } })
   A({ name = 'tags', desc = 'add/remove tags', modes = { n = M.tags } })
-  A({ name = 'toggle_indicators', desc = 'end-of-line indicators on/off', modes = { n = M.toggle_indicators } })
+  A({ name = 'toggle_indicators', desc = 'show/hide tags at line ends', modes = { n = M.toggle_indicators } })
   A({ name = 'info', desc = 'annotation info as a message', cmd = M.info })
   A({ name = 'relabel', desc = 'change label', modes = { n = M.relabel } })
   A({ name = 'add_value', desc = 'add a label', modes = { n = M.add_value } })
@@ -890,6 +944,11 @@ local function setup_autocmds()
   au('BufWritePost', function()
     sync_sets(api.nvim_get_current_buf())
   end, { pattern = { '*/earmark/sets/*.lua', '*/earmark/sets/*.json', '*/.earmark/sets/*.lua', '*/.earmark/sets/*.json' } })
+  -- a label named elsewhere in the project gets that name here too
+  au('User', function(ev)
+    local d = ev.data
+    if d and d.ids and buffer.state[d.buf] then names().adopt(d.buf, d.ids) end
+  end, { pattern = { 'EarmarkAdd', 'EarmarkUpdate' } })
   require('earmark.ui.hover').setup(au)
   au('ColorScheme', function()
     sets.apply_highlights()

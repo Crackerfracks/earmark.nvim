@@ -109,12 +109,16 @@ T['operator']['multibyte word'] = function()
   eq(texts(), { { text = 'naïve', label = '1', status = 'ok' } })
 end
 
-T['operator']['same span is re-labelled, overlaps stack smallest-first'] = function()
+T['operator']['same span gains the label as an overlap, overlaps stack smallest-first'] = function()
   open()
   set_cursor(1, 10)
+  child.lua('_G.msgs = {}; vim.notify = function(m) table.insert(_G.msgs, m) end')
   child.type_keys('2ghiw')
   child.type_keys('5ghiw')
-  eq(texts(), { { text = 'brown', label = '5', status = 'ok' } })
+  eq(child.lua_get('vim.tbl_map(function(v) return v.label end, require("earmark").list(0)[1].annotation.values)'), { '2', '5' })
+  eq(child.lua_get('_G.msgs[#_G.msgs]'), 'earmark: added 5 to the annotation already there (<leader>ml changes its label instead)')
+  child.type_keys('5ghiw') -- already there: nothing changes
+  eq(#child.lua_get('require("earmark").list(0)[1].annotation.values'), 2)
   set_cursor(1, 0)
   child.type_keys('9gh$')
   local at = child.lua_get('vim.tbl_map(function(h) return h.a.quote end, require("earmark").at(0, {0, 11}))')

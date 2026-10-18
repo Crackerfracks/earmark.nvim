@@ -217,10 +217,21 @@ T['visual selection then gh opens the prompt for the selection'] = function()
   eq(h.texts(), { { text = 'quick brown', label = '8', status = 'ok' } })
 end
 
-T['no matching label: <CR> does nothing'] = function()
+T['a third digit replaces the oldest'] = function()
   h.open()
   h.cursor(1, 10)
   child.type_keys('ghiw', '343')
+  h.settle()
+  eq(child.lua_get('vim.api.nvim_get_current_line()'), '43')
+  child.type_keys('<CR>')
+  h.settle()
+  eq(h.texts(), { { text = 'brown', label = '43', status = 'ok' } })
+end
+
+T['no matching label: <CR> does nothing'] = function()
+  h.open()
+  h.cursor(1, 10)
+  child.type_keys('ghiw', 'qqqx')
   local lines = prompt_lines()
   eq(lines[2]:find('no label', 1, true) ~= nil, true)
   child.type_keys('<CR>')

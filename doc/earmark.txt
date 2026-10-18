@@ -86,6 +86,10 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
                                                           *earmark-pick_all*
 `<leader>md`         Review stale, ambiguous and detached annotations.
                                                             *earmark-review*
+`{Visual}<leader>mR` Attach the annotation chosen in the review list to the
+                   selection.                             *earmark-reanchor*
+`<leader>mq`         This file's annotations into the quickfix list.
+                                                                *earmark-qf*
 `<leader>mD`         Compare an annotation's original text with its current
                    text.                                      *earmark-diff*
 `<leader>me`         Export this file's annotations to Markdown.
@@ -106,7 +110,7 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
                                                               *earmark-peek*
 `<leader>mh`         Automatic hover on or off.        *earmark-toggle_hover*
 `<leader>mt`         Add or remove tags of the annotation.       *earmark-tags*
-`<leader>mv`         End-of-line indicators on or off.
+`<leader>mv`         Show or hide #tags at the ends of lines (hidden at first).
                                                  *earmark-toggle_indicators*
 
 ==============================================================================
@@ -121,19 +125,26 @@ the selected colour while you type and the list under the input narrows:
 
 In the prompt:
   <CR>              apply the selected label
-  <Tab>             apply and name it; <Tab> or <CR> there accepts the name
+  <Tab>             like <CR>, then name the label; <Tab> or <CR> there
+                    accepts the name
   <S-Tab>           back to the label stage
   <C-n> <C-p>       move through candidates (also <Down> <Up>; Normal j k)
   <C-s>             try the next label set
-  <Esc>             Normal mode; <Esc> or q again cancels
+  <Esc>             Normal mode; <Esc> or q again cancels. While naming a
+                    label you just chose: apply it without a name
 
 A label with `choices` asks for a choice next, and a choice listed in
 `text.when` asks for a line of text (|earmark-sets|). Labels whose `requires`
 is not met are listed last, dimmed, with the reason.
 
-The name stage is pre-filled from what you called that label before: in this
+Names are per file, and the project remembers them: a label named in one file
+gets that name the first time it is used in another file of the project. The
+name stage is pre-filled from what you called that label before: in this
 file, elsewhere in the project, then anywhere. `prompt.ask_name` decides when
 you are asked: "first_use" (default), "always" or "never".
+
+Annotating exactly the same span again with another label adds that label to
+it (both show); `<leader>ml` changes the label instead.
 
 ==============================================================================
 5. NOTES, TAGS AND THE HOVER                                   *earmark-notes*
@@ -153,9 +164,10 @@ a note, tags, more than one label, or a stale or ambiguous status
 inside the annotation and goes away when you leave, type, scroll or start an
 operator. Overlapping annotations are numbered innermost first.
 
-End-of-line indicators show a pencil per note, the #tags and @identifiers,
-in the label's colour; lines too long for them get them on a virtual line.
-Nothing goes in the sign column.
+End-of-line indicators show a pencil per note in the label's colour, and
+with `<leader>mv` (or `indicators.tags = true`) the #tags and @identifiers
+too; lines too long for them get them on a virtual line. Nothing goes in the
+sign column.
 
 ==============================================================================
 6. FINDING AND REVIEWING                                        *earmark-find*
@@ -236,7 +248,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
            height = { min = 5, max = 0.5 }, winblend = 0 },
   hover = { auto = true, delay = 120, show_when = 'named_or_note',
             max_width = 0.5, max_height = 0.5 },
-  indicators = { mode = 'eol', max_pencils = 3, identifiers = true,
+  indicators = { mode = 'eol', tags = false, max_pencils = 3, identifiers = true,
                  show_empty = false },
   overlap = { style = 'blend' },   -- or 'top'
   export = { group_by = 'label', include_detached = true, format = nil },
@@ -334,7 +346,9 @@ earmark.export({buf}, {opts})                             *earmark.export()*
 earmark.pick({opts})                                        *earmark.pick()*
     `{ scope = 'file'|'project', query = '#todo' }`
 earmark.hover.show() earmark.hover.hide()                 *earmark.hover*
-earmark.statusline()                                  *earmark.statusline()*
+earmark.statusline({opts})                            *earmark.statusline()*
+    `opts.hl`: the highlight group of the statusline section it goes in; its
+    background is kept and it is restored after earmark's colours.
 earmark.on({event}, {fn})                                     *earmark.on()*
     Run `fn(data)` on an event (|earmark-events|): 'Note' or 'EarmarkNote'.
     Returns the autocmd id.
@@ -360,7 +374,8 @@ the number of annotations and notes, a warning count for detached and
 ambiguous ones, and for numbered sets the digits 1234567890 in their colours.
 >lua
   -- lualine
-  sections = { lualine_x = { function() return require('earmark').statusline() end } }
+  local em = require('earmark')
+  sections = { lualine_x = { function() return em.statusline({ hl = 'lualine_x_normal' }) end } }
 <
 ==============================================================================
 15. TROUBLESHOOTING AND FAQ                          *earmark-troubleshooting*

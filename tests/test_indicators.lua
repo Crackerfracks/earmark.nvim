@@ -3,7 +3,7 @@ local child = MiniTest.new_child_neovim()
 local eq = H.eq
 local h = H.helpers(child)
 
-local T = H.new_set(child)
+local T = H.new_set(child, '{ indicators = { tags = true } }')
 
 local function mark(s, e, label)
   return child.lua_get('require("earmark").annotate(0, ...).id', { s, e, { set = 'vivid', label = label or '3' } })
@@ -105,7 +105,7 @@ T['a line too long for them gets a virtual line below'] = function()
   eq(virt_lines(), {})
 end
 
-T['<leader>mv toggles indicators without touching the record'] = function()
+T['<leader>mv toggles tags without touching the record'] = function()
   h.open()
   local id = mark({ 0, 4 }, { 0, 9 })
   note(id, 'n #t')
@@ -114,8 +114,9 @@ T['<leader>mv toggles indicators without touching the record'] = function()
   local before = child.fn.readfile(path)
   eq(row_text(shot(), 1):find('✎ #t', 1, true) ~= nil, true)
   child.type_keys(' mv')
-  eq(child.lua_get('require("earmark.config").options.indicators.mode'), 'none')
-  eq(row_text(shot(), 1):find('✎', 1, true), nil)
+  eq(child.lua_get('require("earmark.config").options.indicators.tags'), false)
+  eq(row_text(shot(), 1):find('#t', 1, true), nil)
+  eq(row_text(shot(), 1):find('✎', 1, true) ~= nil, true) -- pencils stay
   child.type_keys(' mv')
   eq(row_text(shot(), 1):find('✎ #t', 1, true) ~= nil, true)
   child.lua('require("earmark.buffer").save(0)')
@@ -166,6 +167,13 @@ T['nothing is ever put in the sign column'] = function()
     local text = table.concat(vim.fn.readfile(f), '\n')
     eq({ f, text:find('sign_text', 1, true) }, { f, nil })
   end
+end
+
+T['tags are hidden by default'] = function()
+  child.lua('require("earmark.config").options.indicators.tags = false')
+  h.open()
+  note(mark({ 0, 4 }, { 0, 9 }), 'n #t @A')
+  eq(items(0).text, '✎')
 end
 
 return T

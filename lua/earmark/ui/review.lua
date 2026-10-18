@@ -163,7 +163,8 @@ local function actions_for(buf, it)
     label = 'Attach it to a selection…',
     run = function()
       M.pending = { buf = buf, id = a.id }
-      notify('select the text it belongs to, then run :Earmark reanchor')
+      local k = config.options.keys and config.options.keys.reanchor
+      notify(k and ('select the text it belongs to, then press ' .. k) or "select the text it belongs to, then run :'<,'>Earmark reanchor")
     end,
   }
   list[#list + 1] = {
