@@ -39,8 +39,13 @@ card('default-labels', 'The default labels', FRESH,
      'Labels 1 to 10 of the default set "vivid", one per word. The digits <code>1234567890</code> in the statusline '
      'use the same colours, so you can see which number is which colour.',
      'You pick labels by number, so the colours have to be easy to tell apart.',
-     'Default: five generated sets (vivid, pastel, earth, metal, cyber), the same on any background '
-     '(item 6 of the defaults you are asked to confirm: no per-background palettes).')
+     'Default: five generated sets (vivid, pastel, earth, metal, cyber). On a light background each colour is '
+     'darkened to keep the same contrast (see "Colours on a light theme").')
+card('count-hint', 'The count hint', FRESH,
+     [('on "library"', '/library<CR>'), ('a count', '5gh'), ('the motion', 'iw')],
+     'While the motion is still to come, a small hint under the cursor shows the label the count picked: its colour, '
+     'key, your name for it and the colour\'s name.', 'You see which colour a number is before you commit.',
+     'Option: <code>prompt.count_hint = true</code>.')
 card('label-shades', 'Labels 11 to 99: shades', FRESH,
      [('line 4', '4G0'), ('labels 1, 11, 21, 31, 41', '1ghiww11ghiww21ghiww31ghiww41ghiw')],
      'Five words with labels 1, 11, 21, 31 and 41: one colour family in different shades. The last digit picks '
@@ -60,9 +65,9 @@ card('repeat', 'Repeat with .', FRESH,
      'Each <code>.</code> marks another word with the same label, no prompt.', 'Marking a run of things the same way.')
 card('same-span', 'The same word twice: both labels stay', FRESH,
      [('on "places"', '/places<CR>'), ('label 3', '3ghiw'), ('label 5 on the same word', '5ghiw'),
-      ('label 5 again', '5ghiw'), ('rest on it', 'l')],
-     'The second label is added to the annotation (it shows as an overlap); repeating a label it already has does '
-     'nothing. The hover lists both.',
+      ('add it', 'a'), ('label 5 again', '5ghiw'), ('rest on it', 'l')],
+     'A small question asks whether the new label goes on as another one (a) or replaces the old one (r). Added, '
+     'both labels stay visible; repeating a label it already has does nothing. The hover lists both.',
      'This is the old complaint about overlapping highlights on one word: both labels stay visible.',
      'Default to confirm (item 13): another label on exactly the same span is added, not swapped; '
      '<code>&lt;leader&gt;ml</code> swaps.')
@@ -246,6 +251,16 @@ card('set-files', 'Set files with questions', ESSAY,
      'a line of text. The hover shows <code>Accuracy · b Minor issue</code> and the text.',
      'Rubrics, surveys and structured review, not just colours.',
      'Behaviour to confirm: set files are reloaded by checking their modification time on focus and buffer switches.')
+card('palette', 'The palette: <leader>mc', ESSAY,
+     [('palette', '<leader>mc'), ('jump to 5', '5'), ('next set', '<Tab>'), ('back', '<S-Tab>'), ('use it', '<CR>')],
+     'Every label of the set as a big colour patch with your name for it, its colour\'s name, hex and how often it is '
+     'used here. Digits jump to a key, <code>r</code> names it, <code>&lt;CR&gt;</code> makes it the label '
+     '<code>gh</code> offers first.', 'Learn the colours and names of a set at a glance.')
+card('light-theme', 'Colours on a light theme', ESSAY,
+     [('a light theme', ':colorscheme tokyonight-day<CR>'), ('dark again', ':colorscheme tokyonight-night<CR>')],
+     'On a light background every label colour is darkened by the same amount so it stays as readable as on a dark '
+     'one; switching back restores the originals. Darker dark themes leave the colours unchanged.',
+     'Highlights look consistent across colour schemes.', 'Option: <code>color_adapt = true</code>.')
 card('color', 'Recolour a label in this file: :Earmark color', ESSAY,
      [('on "approved"', '/approved<CR>'), ('recolour', ':Earmark color #ff79c6<CR>'), ('undo it', ':Earmark color reset<CR>')],
      'Label 3 turns pink in this file only, then back.', 'Fix a colour clash in one document.')
@@ -261,7 +276,7 @@ card('note-split', 'Note in a split: ,s and ,f', ESSAY,
      [('on "approved"', '/approved<CR>'), ('open the note', '<leader>mm'), ('to a split', ',s'), ('back', ',f'), ('close', 'q')],
      'The note moves to a split at the bottom and back to the float.', 'Longer notes get room.')
 card('hover', 'The hover', ESSAY,
-     [('on "vague promise"', '/vague<CR>'), ('move off and back', 'jjkk')],
+     [('on "vague promise"', '/vague<CR>'), ('move off and back', 'kkjj')],
      'Resting on an annotation with a name, note or tags shows a float with the label name (in its colour), tags and '
      'note, without taking focus; it goes away when you leave.', 'See what you wrote without opening anything.',
      'Default to confirm (item 4): the header is the label colour as text (<code>▍ name</code>), not a filled bar. '
@@ -271,7 +286,7 @@ card('hover-overlap', 'Overlaps in the hover', ESSAY,
      '"budget" (label 7) sits inside "approved the annual budget" (label 3): the hover lists both, innermost first (①, ②).',
      'When marks overlap you can still read each one.')
 card('hover-toggle', 'Hover off and on: <leader>mh', ESSAY,
-     [('on "vague promise"', '/vague<CR>'), ('off', '<leader>mh'), ('move', 'jjkk'), ('on', '<leader>mh')],
+     [('on "vague promise"', '/vague<CR>'), ('off', '<leader>mh'), ('move off and back', 'kkjj'), ('on', '<leader>mh')],
      'With the hover off, resting on the annotation shows nothing.', 'Quiet reading when you want it.')
 card('peek', 'Details now: <leader>mi', ESSAY,
      [('on "Revenue"', '/Revenue<CR>'), ('details', '<leader>mi'), ('close', 'q')],
@@ -295,12 +310,16 @@ section('What overlaps look like', 'Still pictures; the zoomed crop shows the li
 card('overlaps', 'Overlaps (default: blend)', FRESH,
      [('line 3: "the library for"', '/the library<CR>v3e2gh'), ('"library" inside it', 'w5ghiw'),
       ('line 4: "reading room is"', '/reading<CR>4gh3e'), ('"room is", then "room"', 'w4gh2e4ghiw'),
-      ('line 5: four labels on "leaks"', '5G06ghiw3ghiw8ghiw9ghiw'),
+      ('line 5: four labels on "leaks"', '5G06ghiw3ghiwa8ghiwa9ghiwa'),
       ('line 7: rewrite "budget"', '/budget<CR>7ghiwciwmoney<Esc>')],
      'See the legend under the picture.',
      'Overlapping marks on the same words are all visible and you can tell where each starts and ends.',
-     'Default to confirm (item 3): mixed colours with the outer colour as underline; second label undercurl; labels 3+ '
-     'as squares (not a gradient or interleave).')
+     'Confirmed (item 3), then changed after your comments: the same label nested is a deeper shade, extra labels '
+     'split the undercurl so nothing shifts, and stale annotations fade their fill.')
+card('overlaps-squares', "Overlaps with overlap = { extra = 'squares' }", FRESH,
+     [('start with the option', "EARMARK_DEMO_OPTS=\"{ overlap = { extra = 'squares' } }\" nvim -u ../init.lua notes/fresh.md"),
+      ('then the same keys as above', '')],
+     'Line 5 gets a small square per label from the third on.', 'The earlier look, kept as an option.')
 card('overlaps-top', "Overlaps with overlap = { style = 'top' }", FRESH,
      [('start with the option', "EARMARK_DEMO_OPTS=\"{ overlap = { style = 'top' } }\" nvim -u ../init.lua notes/fresh.md"),
       ('then the same keys as above', '')],

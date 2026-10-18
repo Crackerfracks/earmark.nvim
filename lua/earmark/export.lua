@@ -31,7 +31,7 @@ local function lines_ref(x)
 end
 
 --- One list item for a placed annotation.
-local function item(buf, x, with_name)
+local function item(buf, x, with_name, dest_dir)
   local a = x.annotation
   local head = {}
   if with_name then
@@ -52,14 +52,15 @@ local function item(buf, x, with_name)
       out[#out + 1] = l == '' and '' or ('  ' .. l)
     end
   end
-  if a.zk then out[#out + 1] = '  ' .. require('earmark.zk').export_link(buf, a) end
+  if a.zk then out[#out + 1] = '  ' .. require('earmark.zk').export_link(buf, a, dest_dir) end
   return out
 end
 
 --- Markdown lines for the annotations of `buf`.
 --- opts.group_by: 'label' (default) | 'position' | 'tag' | 'time';
 --- opts.include_detached (default true); opts.format(annotations, ctx) -> lines replaces the
---- body (config `export.format` too).
+--- body (config `export.format` too); opts.dest: the file it will be written to (links to zk
+--- notes are made relative to it).
 function M.markdown(buf, opts)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   opts = vim.tbl_extend('force', config.options.export, opts or {})
@@ -81,7 +82,7 @@ function M.markdown(buf, opts)
       out[#out + 1] = '## ' .. title
     end
     for _, x in ipairs(xs) do
-      vim.list_extend(out, item(buf, x, with_name))
+      vim.list_extend(out, item(buf, x, with_name, opts.dest and vim.fs.dirname(opts.dest)))
     end
     out[#out + 1] = ''
   end
@@ -142,16 +143,43 @@ function M.markdown(buf, opts)
   return out
 end
 
---- Where an export of `buf` goes by default.
-function M.default_path(buf)
+--- Path of one export location for `buf`: 'project' (<root>/.earmark/export/), 'beside'
+--- (next to the file, as <name>.earmark.md) or a function(buf, ctx) -> path.
+local function path_for(buf, where)
   local doc = store.doc(buf)
+  local name = api.nvim_buf_get_name(buf)
+  if type(where) == 'function' then
+    return where(buf, { doc = doc, path = name ~= '' and name or nil })
+  end
+  if where == 'beside' and name ~= '' and vim.bo[buf].buftype == '' then
+    return vim.fn.fnamemodify(name, ':p:r') .. '.earmark.md'
+  end
   if doc and doc.kind == 'file' and doc.root then
     local rel = doc.key:gsub('/', '-'):gsub('%.[^.]*$', '')
     return ('%s/.earmark/export/%s-%s.md'):format(doc.root, vim.fn.fnamemodify(doc.root, ':t'), rel)
   end
-  local name = api.nvim_buf_get_name(buf)
   local base = name ~= '' and vim.fn.fnamemodify(name, ':t:r') or ('scratch-' .. os.date('%Y%m%d-%H%M%S'))
   return ('%s/export/%s.md'):format(config.options.storage_dir, base)
+end
+
+--- Every place an export of `buf` goes (`export.location`, one or a list), first one first.
+function M.paths(buf)
+  local loc = config.options.export.location or 'project'
+  if type(loc) ~= 'table' then loc = { loc } end
+  local out, seen = {}, {}
+  for _, where in ipairs(loc) do
+    local p = path_for(buf, where)
+    if p and not seen[p] then
+      seen[p] = true
+      out[#out + 1] = p
+    end
+  end
+  return out
+end
+
+--- Where an export of `buf` goes by default (the first of `M.paths`).
+function M.default_path(buf)
+  return M.paths(buf)[1]
 end
 
 --- `<leader>me`: ask for a file name, write the export there and open it in a split.
@@ -159,13 +187,29 @@ function M.run(buf)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   local n = #buffer.list(buf)
   if n == 0 then return vim.notify('earmark: no annotations') end
-  vim.ui.input({ prompt = 'Export to: ', default = M.default_path(buf), completion = 'file' }, function(path)
+  local paths = M.paths(buf)
+  vim.ui.input({ prompt = 'Export to: ', default = paths[1], completion = 'file' }, function(path)
     if not path or vim.trim(path) == '' then return end
     path = vim.fs.normalize(vim.fn.fnamemodify(vim.trim(path), ':p'))
-    vim.fn.mkdir(vim.fs.dirname(path), 'p')
-    local ok, err = pcall(vim.fn.writefile, M.markdown(buf), path)
+    local function write(p)
+      vim.fn.mkdir(vim.fs.dirname(p), 'p')
+      return pcall(vim.fn.writefile, M.markdown(buf, { dest = p }), p)
+    end
+    local ok, err = write(path)
     if not ok then
       return vim.notify('earmark: could not write ' .. path .. ': ' .. tostring(err), vim.log.levels.ERROR)
+    end
+    -- the other configured locations get the same export
+    local also = {}
+    for i = 2, #paths do
+      local p = vim.fs.normalize(paths[i])
+      if p ~= path then
+        if write(p) then
+          also[#also + 1] = vim.fn.fnamemodify(p, ':~:.')
+        else
+          vim.notify('earmark: could not write ' .. p, vim.log.levels.WARN)
+        end
+      end
     end
     local open = vim.fn.bufnr(path)
     local win = open > 0 and vim.fn.bufwinid(open) or -1
@@ -176,7 +220,8 @@ function M.run(buf)
     end
     -- an export opened earlier: show what was just written
     if open > 0 and not vim.bo.modified then vim.cmd('silent edit!') end
-    vim.notify(('earmark: exported %d to %s'):format(n, vim.fn.fnamemodify(path, ':~:.')))
+    vim.notify(('earmark: exported %d to %s%s'):format(n, vim.fn.fnamemodify(path, ':~:.'),
+      #also > 0 and (' and ' .. table.concat(also, ', ')) or ''))
   end)
 end
 

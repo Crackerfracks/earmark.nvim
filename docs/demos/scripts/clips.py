@@ -44,6 +44,13 @@ def _(c):
     c.step('12gh$', 'label 12, from here to the end of the line ($)')
 
 
+@clip('count-hint', 'After a count, a hint shows which label it picked', file=FRESH, cursor=(3, 16))
+def _(c):
+    c.step('5gh', '5gh: the hint under the cursor shows label 5 and its colour name', hold=3.0)
+    c.mark_still()
+    c.step('iw', 'then the motion: the hint closes and the word takes label 5', before=0)
+
+
 @clip('default-labels', 'The default labels: set "vivid", keys 1 to 10', file=FRESH, cursor=(3, 0))
 def _(c):
     c.step('1ghiww2ghiww3ghiww4ghiww5ghiw', 'labels 1 to 5, one per word')
@@ -157,7 +164,8 @@ def _(c):
 @clip('same-span', 'The same word twice: the second label is added, not swapped', file=FRESH, cursor=(5, 13))
 def _(c):
     c.step('3ghiw', 'label 3 on "places"')
-    c.step('5ghiw', 'label 5 on exactly the same word: now it has both')
+    c.step('5ghiw', 'label 5 on exactly the same word: earmark asks what you mean', hold=2.5)
+    c.step('a', 'a adds 5 as another label (r would replace 3): now it has both', before=0)
     c.mark_still()
     c.step('5ghiw', 'again with 5: it already has 5, nothing changes')
     c.step('l', 'the hover lists both labels', before=0, hold=3.0)
@@ -334,6 +342,16 @@ def _(c):
     c.step('1ghiww2ghiww3ghiw', 'labels 1 to 3 of "cyber"')
 
 
+@clip('palette', '<leader>mc: the palette, every label of the set at a glance', file=ESSAY, cursor=(3, 20))
+def _(c):
+    c.step(' mc', 'each label as a colour patch: your name, the colour\'s name, hex and uses', hold=3.5)
+    c.mark_still()
+    c.step('5', 'a digit jumps to that key: 5 ("Vague")', before=0, hold=2.0)
+    c.step('<Tab>', 'Tab shows the next set', before=0, hold=2.5)
+    c.step('<S-Tab>', 'Shift-Tab goes back', before=0)
+    c.step('<CR>', 'Enter makes label 5 the one gh offers first (see the statusline)', before=0, hold=3.0)
+
+
 @clip('color', ':Earmark color recolours a label in this file only', file=ESSAY, cursor=(3, 20))
 def _(c):
     c.ex('Earmark color #ff79c6', 'label 3 ("Claim") becomes pink in this file', hold=3.0)
@@ -362,12 +380,13 @@ def _(c):
     c.step('q', 'q saves and closes', before=0)
 
 
-@clip('hover', 'The hover: rest the cursor on an annotation', file=ESSAY, cursor=(9, 30))
+@clip('hover', 'The hover: rest the cursor on an annotation', file=ESSAY, cursor=(7, 3))
 def _(c):
-    c.step('kk', 'move onto "vague promise"', hold=3.0)
-    c.step('jj', 'it shows the label name, tags and note without taking focus', hold=2.0)
-    c.step('kk', 'and goes away when you leave', hold=3.0)
+    c.step('jj', 'down onto "vague promise": the hover shows its name, tags and note, focus stays here',
+           hold=3.5)
     c.mark_still()
+    c.step('kk', 'move off "vague promise": the hover goes away', hold=2.0)
+    c.step('jj', 'back on: it shows again', hold=3.0)
 
 
 @clip('hover-overlap', 'Overlapping annotations: the hover lists them innermost first', file=ESSAY, cursor=(3, 34))
@@ -376,13 +395,13 @@ def _(c):
     c.mark_still()
 
 
-@clip('hover-toggle', '<leader>mh turns the automatic hover off and on', file=ESSAY, cursor=(9, 30))
+@clip('hover-toggle', '<leader>mh turns the automatic hover off and on', file=ESSAY, cursor=(7, 3))
 def _(c):
     c.step(' mh', 'hover off')
-    c.step('kk', 'nothing shows now', hold=2.5)
+    c.step('jj', 'onto "vague promise": nothing shows now', hold=2.5)
     c.mark_still()
     c.step(' mh', 'on again')
-    c.step('jk', 'it shows', hold=2.5)
+    c.step('kj', 'move off and back: it shows', hold=3.0)
 
 
 @clip('peek', '<leader>mi: show the details float now, and enter it', file=ESSAY, cursor=(11, 3))
@@ -429,7 +448,9 @@ def build_overlaps(c):
     c.keys('4ghiw')             # "room" = 4
     c.goto(5, 0)
     c.keys('6ghiw')             # line 5: "leaks" = 6
-    c.keys('3ghiw8ghiw9ghiw')   # + labels 3, 8, 9 on the same span
+    for k in '389':             # + labels 3, 8, 9 on the same span (a = add, at the question)
+        c.keys(k + 'ghiw')
+        c.keys('a')
     c.goto(7, 22)
     c.keys('7ghiw')             # line 7: "budget" = 7, then rewritten
     c.keys('ciwmoney<Esc>')
@@ -439,11 +460,12 @@ def build_overlaps(c):
 OVERLAP_LEGEND = [
     'Line 3: different labels overlap. "the library for" = 2, "library" = 5 inside it: the overlap is the mix of '
     'both colours, underlined in the outer colour.',
-    'Line 4: the same label nested: "reading room is", "room is", "room" all = 4. Inner parts are underlined in '
-    'the text colour; three levels deep, a double underline.',
-    'Line 5: one word, four labels: 6 is the fill, the second label (3) is an undercurl, labels 3 and up are '
-    'small squares after the word.',
-    'Line 7: "budget" (label 7) was retyped as "money": the annotation is now stale, drawn with a dashed underline.',
+    'Line 4: the same label nested: "reading room is", "room is", "room" all = 4. Each inner level is a deeper '
+    'shade of the same colour, like highlighter strokes crossing.',
+    'Line 5: one word, four labels: 6 is the fill; the undercurl is cut into three runs, one each for 3, 8 and 9. '
+    'Nothing is added to the line, so the text after it does not move.',
+    'Line 7: "budget" (label 7) was retyped as "money": the annotation is now stale, its fill faded and a dashed '
+    'underline.',
 ]
 
 
@@ -452,6 +474,25 @@ OVERLAP_LEGEND = [
 def _(c):
     build_overlaps(c)
     still(c)
+
+
+@clip('overlaps-squares', 'Overlaps with overlap = { extra = "squares" }: a square per extra label', file=FRESH,
+      still=True, opts="{ overlap = { extra = 'squares' } }", zoom=(0.0, 0.11, 0.6, 0.22),
+      legend=['The same annotations with squares: line 5 keeps the undercurl for label 3 and adds a small square '
+              'after the word for each label from the third on. The squares take room, so the line shifts.'])
+def _(c):
+    build_overlaps(c)
+    still(c)
+
+
+@clip('light-theme', 'Colours adapt to the background: the same labels on a light theme', file=ESSAY, cursor=(3, 20))
+def _(c):
+    c.note('a dark theme: the labels as they were designed')
+    c.shot(3.0, wait=0.5)
+    c.ex('colorscheme tokyonight-day', 'a light theme: each colour is darkened to stay as readable',
+         hold=3.5)
+    c.mark_still()
+    c.ex('colorscheme tokyonight-night', 'and back: the colours return to their originals', hold=2.5)
 
 
 @clip('overlaps-top', 'Overlaps with overlap = { style = "top" }: the smallest span on top', file=FRESH, still=True,

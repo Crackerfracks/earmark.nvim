@@ -353,8 +353,13 @@ T['the export links the note'] = function()
     require('earmark.config').options.zk.dir = 'my notes'
     require('earmark').zk.promote(0, _G.id)
   ]])
+  -- zk won't make the folder itself
+  eq(child.lua_get('vim.fn.isdirectory(_G.R .. "/my notes")'), 1)
   local lines = child.lua_get('require("earmark").export(0)')
   eq(vim.tbl_contains(lines, '  → [Why so fast?](<my notes/note.md>)'), true)
+  -- written to a file: the link is relative to that file's folder
+  lines = child.lua_get('require("earmark.export").markdown(0, { dest = _G.R .. "/out/x.md" })')
+  eq(vim.tbl_contains(lines, '  → [Why so fast?](<../my notes/note.md>)'), true)
 end
 
 T[':Earmark zk completes its subcommands'] = function()

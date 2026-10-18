@@ -129,11 +129,14 @@ function M.title(path)
   return vim.fn.fnamemodify(path, ':t:r')
 end
 
---- `→ [title](path in the notebook)` for the export.
-function M.export_link(buf, a)
+--- `→ [title](path)` for the export: relative to the export file's folder `dest_dir` when
+--- given, else the note's path in the notebook.
+function M.export_link(buf, a, dest_dir)
   local path = M.path(a, buf)
   local title = path and M.title(path) or vim.fn.fnamemodify(a.zk, ':t:r')
-  return ('→ [%s](%s)'):format(title, target(a.zk))
+  local link = a.zk
+  if path and dest_dir then link = relative(real(dest_dir), real(path)) end
+  return ('→ [%s](%s)'):format(title, target(link))
 end
 
 ---------------------------------------------------------------------------
@@ -320,6 +323,8 @@ local function create(buf, id, opts, cb)
     return cb(err)
   end
   local note = M.compose(buf, a, nb)
+  -- zk refuses a folder that doesn't exist yet (zk.dir = 'npcs' on the first note)
+  if note.dir ~= '.' then pcall(vim.fn.mkdir, nb .. '/' .. note.dir, 'p') end
   local argv, stdin = M.command(note, nb)
   M._run(argv, { cwd = nb, stdin = stdin }, function(res)
     if not succeeded(res, 'create the note') then return cb(res.missing and MISSING or vim.trim(res.stderr or '')) end

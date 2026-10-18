@@ -1,14 +1,16 @@
 -- Derived visuals, drawn by one decoration provider for the visible rows only:
 --   * where annotations overlap, a composite: the OKLab mean of their colours, underlined in
---     the outermost one's colour (same colour throughout: underlined in the text colour, so
---     a word marked inside a phrase of the same label is still visible);
---   * an annotation's second label as an undercurl in that label's colour;
+--     the outermost one's colour (same colour throughout: a deeper shade per level, like
+--     highlighter strokes laid over each other);
+--   * an annotation's second label as an undercurl in that label's colour; with more labels
+--     the undercurl is cut into one equal run per extra label (`overlap.extra = 'split'`);
 --   * end-of-line indicators: a pencil per note, #tags and [identifiers] of the annotations
 --     ending on that line, in their colours (never a second background). A line too long
 --     for them gets them on a virtual line below instead (kept in `ns_lines`, since virtual
 --     lines can't be ephemeral).
 -- The persistent extmarks in `buffer.ns` stay the anchors and draw each span's own colour;
--- swatches for labels 3+ are persistent too (inline virtual text can't be ephemeral).
+-- with `overlap.extra = 'squares'`, swatches for labels 3+ are persistent too (inline
+-- virtual text can't be ephemeral).
 local buffer = require('earmark.buffer')
 local color = require('earmark.color')
 local config = require('earmark.config')
@@ -77,14 +79,11 @@ function M.overlap_group(hexes)
     end
   end
   if #uniq == 1 then
-    -- nested spans of one colour: keep the colour, underline in the text colour (double
-    -- underline from three levels deep)
-    local bg = uniq[1]
-    local fg = color.contrast_fg(bg)
-    local deep = #hexes >= 3
-    return group(('same|%s|%s'):format(bg, deep and 2 or 1), {
-      bg = bg, fg = fg, sp = fg, underline = not deep or nil, underdouble = deep or nil,
-    })
+    -- nested spans of one colour: like highlighter strokes laid over each other, each level
+    -- is a deeper shade of the same colour (darker and a little richer)
+    local depth = math.min(#hexes - 1, 4)
+    local bg = color.shift(uniq[1], 1 + 0.18 * depth, -0.07 * depth)
+    return group(('same|%s|%d'):format(uniq[1], depth), { bg = bg, fg = color.contrast_fg(bg) })
   end
   local sorted = vim.list_slice(uniq)
   table.sort(sorted)
@@ -125,6 +124,27 @@ local function visible(buf, S, top, bot)
   return out
 end
 
+--- [s, e) cut into `k` runs of (nearly) equal numbers of characters: { {s=, e=} ... }.
+--- Fewer runs when the span has fewer than `k` characters.
+local function split_span(buf, s, e, k)
+  local lines = api.nvim_buf_get_text(buf, s[1], s[2], e[1], e[2], {})
+  local pos = {}
+  for i, l in ipairs(lines) do
+    local row, base = s[1] + i - 1, i == 1 and s[2] or 0
+    for _, b in ipairs(vim.str_utf_pos(l)) do
+      pos[#pos + 1] = { row, base + b - 1 }
+    end
+  end
+  local n = #pos
+  k = math.min(k, n)
+  pos[n + 1] = e
+  local out = {}
+  for i = 0, k - 1 do
+    out[#out + 1] = { s = pos[math.floor(i * n / k) + 1], e = pos[math.floor((i + 1) * n / k) + 1] }
+  end
+  return out
+end
+
 --- Decorations for rows [top, bot] of `buf`, as plain data (the provider draws exactly these):
 ---   { overlaps = { {s, e, ids, hexes} ... }, curls = { {s, e, id, hex} ... } }
 --- `ids`/`hexes` list the overlapping annotations outermost first.
@@ -134,10 +154,20 @@ function M.segments(buf, top, bot)
   local res = { overlaps = {}, curls = {} }
   if not S then return res end
   local items = visible(buf, S, top, bot)
+  local split = config.options.overlap.extra ~= 'squares'
   for _, it in ipairs(items) do
-    local v2 = it.a.values[2]
-    local hex = v2 and sets.color(v2, S.colors)
-    if hex then res.curls[#res.curls + 1] = { s = it.s, e = it.e, id = it.id, hex = hex } end
+    local extra = {}
+    for i = 2, (split and #it.a.values or 2) do
+      local hex = it.a.values[i] and sets.color(it.a.values[i], S.colors)
+      if hex then extra[#extra + 1] = hex end
+    end
+    if #extra == 1 then
+      res.curls[#res.curls + 1] = { s = it.s, e = it.e, id = it.id, hex = extra[1] }
+    elseif #extra > 1 then
+      for i, part in ipairs(split_span(buf, it.s, it.e, #extra)) do
+        res.curls[#res.curls + 1] = { s = part.s, e = part.e, id = it.id, hex = extra[i] }
+      end
+    end
   end
   items = vim.tbl_filter(function(it)
     return it.hex ~= nil -- labels that no longer exist keep the plain look

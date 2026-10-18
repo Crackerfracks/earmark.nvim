@@ -105,11 +105,18 @@ M.defaults = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
     -- outer one's colour. 'top': the smallest span simply covers the others.
     style = 'blend',
+    -- Labels after the second: 'split' cuts the undercurl into one equal run per extra label
+    -- (nothing is added to the line); 'squares' puts a small square per label after the span.
+    extra = 'split',
   },
   export = {
     group_by = 'label', -- 'label' | 'position' | 'tag' | 'time'
     include_detached = true,
     format = nil, -- function(list, ctx) -> lines, replaces the body
+    -- Where `<leader>me` writes: 'project' (<root>/.earmark/export/<project>-<path>.md),
+    -- 'beside' (next to the annotated file, as <name>.earmark.md), a function(buf, ctx) ->
+    -- path, or a list of these to write every one (the first is the one you're asked about).
+    location = 'project',
   },
   -- zk notes (`<leader>mz`), made with the zk command line.
   zk = {

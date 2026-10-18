@@ -65,6 +65,20 @@ T['<leader>me writes the export to the default path and opens it'] = function()
   eq(child.lua_get('require("earmark.buffer").state[vim.api.nvim_get_current_buf()] == nil'), true)
 end
 
+T['export.location = beside, or both: next to the file as well'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 }, '3')
+  child.lua('require("earmark.config").options.export.location = { "beside", "project" }')
+  child.lua('vim.ui.input = function(opts, cb) _G.default = opts.default; cb(opts.default) end')
+  child.type_keys(' me')
+  local root = child.lua_get('vim.uv.fs_realpath(_G.root)')
+  local beside = root .. '/notes/doc.earmark.md'
+  eq(child.lua_get('_G.default'), beside)
+  eq(child.fn.filereadable(beside), 1)
+  eq(child.fn.filereadable(root .. '/.earmark/export/proj-notes-doc.md'), 1)
+  eq(child.fn.readfile(beside), child.fn.readfile(root .. '/.earmark/export/proj-notes-doc.md'))
+end
+
 T['<leader>mo annotates the other occurrences with the same labels'] = function()
   h.open({ 'the cat and the dog and the bird', 'the end' })
   local id = mark({ 0, 0 }, { 0, 3 }, '7')

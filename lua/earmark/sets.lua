@@ -46,6 +46,9 @@ local function define(name, spec)
   local bg = color.adapt(spec.bg)
   local hl = { bg = bg, fg = color.contrast_fg(bg) }
   if spec.style == 'stale' then
+    -- faded: most of the colour drained from the fill, underdashed
+    hl.bg = color.shift(bg, 0.35, 0)
+    hl.fg = color.contrast_fg(hl.bg)
     hl.underdashed, hl.sp = true, hl.fg
   elseif spec.style == 'ambiguous' then
     hl.underdotted, hl.sp = true, hl.fg
