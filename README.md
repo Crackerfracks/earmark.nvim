@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Export, colour overrides and the zk bridge are next.
+Status: early. The public API and the zk bridge are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -48,6 +48,9 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mp` / `<leader>mP` | pick an annotation in this file / in the whole project |
 | `<leader>md` | review the annotations whose text changed or disappeared |
 | `<leader>mD` | compare an annotation's original text with what it says now |
+| `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
+| `<leader>mo` | give every other occurrence of the annotated text the same labels |
+| `<leader>mg{motion}` / `{Visual}<leader>mg` | move the annotation under cursor onto the motion / selection (note and labels stay) |
 | `<leader>ms` | switch to the next label set (a popup shows its colours) |
 | `<leader>mS` | choose the label set from a list |
 | `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
@@ -123,6 +126,16 @@ it to a selection (`:'<,'>Earmark reanchor`), or erase it.
 `:Earmark scratch` reopens a scratch buffer you annotated earlier, with its text and
 annotations.
 
+### Export
+
+`<leader>me` writes a Markdown file with every annotation, grouped by label (with your
+names for them), each with its text, line numbers, tags and note, plus a **Detached** section
+for annotations whose text is gone. Inside a project it suggests
+`<root>/.earmark/export/<project>-<path-of-file>.md` (`export/` is gitignored). Set
+`export.group_by` to `'position'`, `'tag'` or `'time'`, or `export.format` to a function
+`(list, ctx) -> lines` to write your own body. `:Earmark color #rrggbb` (or `reset`)
+recolours the label under the cursor in this file only.
+
 ### Indicators
 
 At the end of the line an annotation ends on, earmark shows a `✎` for each note (`✎✎✎ +2`
@@ -147,7 +160,7 @@ saved). `indicators.show_empty = true` adds a dot for annotations without a note
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -162,6 +175,7 @@ require('earmark').setup({
   -- Strings are generated numbered palettes; named tables are your own sets.
   sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
   sets_dir = nil, -- your set files; default ~/.config/earmark/sets, false to skip
+  default_label = nil, -- offered first before you've used any label, e.g. 'vivid/3'
   current = nil, -- set a count resolves against (default: first)
   root_markers = { '.earmark', '.zk', '.git' },
   storage_dir = vim.fn.stdpath('data') .. '/earmark', -- files outside any root, scratch buffers
@@ -176,6 +190,7 @@ require('earmark').setup({
     tags = '<leader>mt', toggle_indicators = '<leader>mv',
     next_same = '<leader>m]', prev_same = '<leader>m[', jump = '<leader>mj',
     pick = '<leader>mp', pick_all = '<leader>mP', review = '<leader>md', diff = '<leader>mD',
+    export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
   prompt = {
@@ -186,6 +201,7 @@ require('earmark').setup({
   ui = { border = 'rounded' },
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
   statusline = { digits = true },
+  export = { group_by = 'label', include_detached = true, format = nil },
   note = {
     layout = 'float', -- 'float' | 'split'
     width = 0.6, max_width = 100, -- fraction of the window, and a column cap
@@ -282,7 +298,8 @@ sections = { lualine_x = { function() return require('earmark').statusline() end
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
 `(earmark-cycle-set)`, `(earmark-pick-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
-`(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`, `(earmark-relabel)`, `(earmark-add-value)`,
+`(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`,
+`(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-relabel)`, `(earmark-add-value)`,
 `(earmark-rename)`.
 
 ## Storage

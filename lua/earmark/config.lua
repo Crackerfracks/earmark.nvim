@@ -9,6 +9,8 @@ M.defaults = {
   -- Directory of your own set files (one set per *.lua / *.json file), false to skip.
   -- Default: ~/.config/earmark/sets. Projects add <root>/.earmark/sets.
   sets_dir = nil,
+  -- Label the prompt offers first before you've used any, e.g. 'vivid/3' or 'review/q1'.
+  default_label = nil,
   -- Set used when a count picks a label. Defaults to the first set.
   current = nil,
   -- Where annotations are stored: `<root>/.earmark/` for the nearest root found by these
@@ -43,6 +45,9 @@ M.defaults = {
     pick_all = '<leader>mP', -- annotations in the project
     review = '<leader>md', -- stale, ambiguous and detached annotations
     diff = '<leader>mD', -- original vs current text of the annotation under the cursor
+    export = '<leader>me', -- Markdown export of this file's annotations
+    occurrences = '<leader>mo', -- annotate every other occurrence of the text under the cursor
+    regrow = '<leader>mg', -- <leader>mg{motion}: move the annotation under the cursor onto the motion
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -89,6 +94,11 @@ M.defaults = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
     -- outer one's colour. 'top': the smallest span simply covers the others.
     style = 'blend',
+  },
+  export = {
+    group_by = 'label', -- 'label' | 'position' | 'tag' | 'time'
+    include_detached = true,
+    format = nil, -- function(list, ctx) -> lines, replaces the body
   },
   statusline = {
     digits = true, -- numbered sets: show 1234567890 in the set's colours
