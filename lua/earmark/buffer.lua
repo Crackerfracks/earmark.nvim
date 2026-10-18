@@ -462,6 +462,12 @@ function M.forget(buf)
   if not S then return end
   if S.timer and not S.timer:is_closing() then S.timer:close() end
   M.state[buf] = nil
+  -- an unloaded buffer keeps its extmarks: without this, `:e` after an outside edit draws
+  -- the old marks at their old places next to the ones loaded again
+  if api.nvim_buf_is_valid(buf) then
+    api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
+    api.nvim_buf_clear_namespace(buf, M.ns_swatch, 0, -1)
+  end
 end
 
 --- The buffer's document identity changed (:saveas, :file, scratch written to a file).

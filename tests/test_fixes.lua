@@ -170,4 +170,19 @@ T['the statusline shows a detached annotation without waiting for another key'] 
   eq(status:find('⚠', 1, true) ~= nil, true)
 end
 
+T['reloading after an outside edit leaves no highlight at the old place'] = function()
+  h.open({ 'one two three', 'four five six' })
+  child.lua('require("earmark").annotate(0, { 0, 4 }, { 0, 7 }, { set = "vivid", label = "3" })')
+  child.lua('require("earmark.buffer").save(0)')
+  child.lua([[
+    local p = vim.api.nvim_buf_get_name(0)
+    vim.fn.writefile({ 'zero', '', 'one two three', 'four five six' }, p)
+  ]])
+  child.cmd('edit')
+  h.settle(300)
+  local marks = child.lua_get([[vim.tbl_map(function(m) return { m[2], m[3] } end,
+    vim.api.nvim_buf_get_extmarks(0, require('earmark.buffer').ns, 0, -1, {}))]])
+  eq(marks, { { 2, 4 } })
+end
+
 return T
