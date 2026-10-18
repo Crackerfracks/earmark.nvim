@@ -264,7 +264,7 @@ local function render(P)
   }
   api.nvim_buf_set_extmark(P.buf, M.ns, 0, 0, mark)
   local color = value and sets.color(value, buffer.get(P.src_buf) and buffer.get(P.src_buf).colors)
-  api.nvim_set_hl(0, 'EarmarkPromptBorder', color and { fg = color } or { link = 'FloatBorder' })
+  api.nvim_set_hl(0, 'EarmarkPromptBorder', color and { fg = require('earmark.color').adapt(color) } or { link = 'FloatBorder' })
   local cfg = place.for_span(P.src_win, P.spans[1].s, P.spans[#P.spans].e, width, 1 + #vl, {
     prefer = P.side,
     min_h = 1 + #vl,

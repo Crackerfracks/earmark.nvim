@@ -1039,11 +1039,15 @@ local function setup_autocmds()
     if d and d.ids and buffer.state[d.buf] then names().adopt(d.buf, d.ids) end
   end, { pattern = { 'EarmarkAdd', 'EarmarkUpdate' } })
   require('earmark.ui.hover').setup(au)
-  au('ColorScheme', function()
+  local function recolor()
+    local changed = require('earmark.color').detect_background()
     sets.apply_highlights()
-    require('earmark.render').apply_highlights()
+    require('earmark.render').apply_highlights(changed)
     require('earmark.ui.statusline').apply_highlights()
-  end)
+    if changed then vim.cmd('redraw!') end
+  end
+  au('ColorScheme', recolor)
+  au('OptionSet', recolor, { pattern = 'background' })
 end
 
 function M.setup(opts)
@@ -1053,6 +1057,7 @@ function M.setup(opts)
     return
   end
   config.setup(opts)
+  require('earmark.color').detect_background()
   sets.load(config.options)
   register_actions()
   actions.apply_keymaps(config.options.keys)

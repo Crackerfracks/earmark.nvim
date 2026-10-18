@@ -122,6 +122,10 @@ M.defaults = {
   -- Colour names ("Tangerine") shown with labels: the nearest of ~700 names from the xkcd
   -- colour survey. false hides them; a function(hex) -> name|nil supplies your own.
   color_names = true,
+  -- Label colours are made for a dark background. With a light colour scheme (or any other
+  -- background) each one is shifted in lightness so it stands out from the page as much as
+  -- it does on dark: the same weight on every theme. false: always the exact colours.
+  color_adapt = true,
   -- 'auto' (snacks, then telescope, then vim.ui.select), 'snacks', 'telescope' or 'select'
   picker = 'auto',
   -- Buffers with these 'buftype's are never annotated.

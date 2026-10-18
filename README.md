@@ -116,6 +116,15 @@ for a label you haven't named, the statusline. `color_names = false` hides them;
 function `color_names = function(hex) return name end` supplies your own (return nil to
 fall back), and a set's label can carry `color_name = '…'`.
 
+### Light and dark colour schemes
+
+The label colours are designed on a dark background. On any other background earmark
+shifts each colour's lightness (keeping its hue) so it stands out from the page as much as
+it does on dark: on a light theme a highlight sits a little darker than the page instead
+of brighter, so it keeps the same weight. It follows `:colorscheme` and `'background'`
+changes as they happen. The label itself doesn't change (its number, name, colour name and
+hex stay the same); only how it's drawn does. `color_adapt = false` draws the exact colours.
+
 | In the prompt | |
 |---|---|
 | `<CR>` | apply the selected label |
@@ -262,6 +271,7 @@ require('earmark').setup({
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
   statusline = { digits = true, color_name = true },
   color_names = true, -- false, or function(hex) -> name|nil
+  color_adapt = true, -- shift colours to suit a light (or any other) colour scheme
   export = { group_by = 'label', include_detached = true, format = nil },
   zk = { dir = nil, open = true },
   note = {
@@ -495,7 +505,7 @@ Defaults that were decided overnight and are worth a second look:
 4. The hover header is the label colour as text (`▍ name`), not a filled bar.
 5. `<leader>mv` shows or hides tags and identifiers at the ends of lines (hidden at
    startup); pencils always show.
-6. No per-background palettes.
+6. Colours adapt to the colour scheme's background (`color_adapt`): decided 2026-10-18.
 7. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
 8. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
 9. What the statusline shows: the next label, counts, the warning count and the digit row.
