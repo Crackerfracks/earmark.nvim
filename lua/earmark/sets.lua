@@ -112,6 +112,7 @@ local function normalize(name, spec)
         desc = l.desc,
         -- auto colours walk the vivid palette so neighbouring labels differ
         color = l.color or color.numbered('vivid', ((i - 1) % 99) + 1),
+        color_name = l.color_name,
         choices = choices,
         text = type(text) == 'table' and text or nil,
         requires = type(l.requires) == 'table' and l.requires or nil,
@@ -304,6 +305,29 @@ function M.color(value, colors)
   if c and c.color then return c.color end
   local l = M.label(value)
   return l and l.color or nil
+end
+
+--- Human name of a value's colour ("Tangerine"): the label's `color_name` if its set gives
+--- one, else the nearest name from the colour-name list. A set's own colours get distinct
+--- names; a doc override or a choice's colour is named on its own.
+function M.color_name(value, colors)
+  local hex = M.color(value, colors)
+  if not hex then return nil end
+  local l = M.label(value)
+  if l and hex == l.color then
+    if l.color_name then return l.color_name end
+    local set = M.by_name[value.set]
+    if not set.color_names then
+      set.color_names = require('earmark.colornames').for_set(vim.tbl_map(function(x)
+        return x.color
+      end, set.labels))
+      for i, x in ipairs(set.labels) do
+        set.color_names[x.key] = set.color_names[i]
+      end
+    end
+    return set.color_names[l.key]
+  end
+  return require('earmark.colornames').name(hex)
 end
 
 --- Whether label `l` may be added next to `others` (values already on the annotation):

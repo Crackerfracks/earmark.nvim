@@ -205,6 +205,17 @@ function M.operator_expr(suffix)
     local value = value_for_count(vim.v.count)
     if not value then return '<Ignore>' end
     pending, want_prompt = value, false
+    if not mode:match('^[vV\22]') and config.options.prompt.count_hint then
+      -- the keys returned below haven't run yet: wait for the operator to start waiting
+      api.nvim_create_autocmd('ModeChanged', {
+        pattern = '*:no*',
+        once = true,
+        callback = function()
+          -- (scheduled callbacks only run once the operator is done, so open it right here)
+          if vim.v.operator == 'g@' then require('earmark.ui.count_hint').show(value) end
+        end,
+      })
+    end
   else
     want_prompt = true
     op = {
@@ -759,6 +770,22 @@ function M.restore(buf)
   return buffer.restore(buf or 0)
 end
 
+--- The value a plain `gh` offers first (and the statusline shows).
+function M.next_value()
+  local key = first_key()
+  return key and { set = sets.current, label = key } or nil
+end
+
+--- Make `value` the one `gh` offers first, switching to its set.
+function M.use_value(value)
+  if not sets.label(value) then return end
+  sets.current = value.set
+  last_value = { set = value.set, label = value.label }
+  pcall(vim.cmd, 'redrawstatus!')
+  notify(('next label: %s·%s %s'):format(value.set, value.label,
+    sets.color_name(value, (buffer.state[api.nvim_get_current_buf()] or {}).colors) or ''))
+end
+
 --- Name a label for one document (nil clears it).
 function M.rename_label(buf, value, name)
   return buffer.rename_label(buf or 0, value, name)
@@ -847,6 +874,9 @@ local function register_actions()
   A({ name = 'zk', desc = 'promote to a zk note', modes = { n = M.zk } })
   A({ name = 'occurrences', desc = 'annotate other occurrences of this text', modes = { n = M.occurrences } })
   A({ name = 'regrow', desc = 'move the annotation onto a motion', modes = { n = M.regrow_expr, x = M.regrow_expr }, expr = true, cmd = false })
+  A({ name = 'palette', desc = 'the set\'s colours as labelled patches', modes = { n = function() require('earmark.ui.palette').open() end },
+    cmd = function(args) require('earmark.ui.palette').open(args[1]) end,
+    complete = function() return sets.order end })
   A({ name = 'color', desc = 'colour this label differently in this file', cmd = M.color,
     complete = function() return { 'reset' } end })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })

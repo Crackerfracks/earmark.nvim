@@ -24,12 +24,8 @@ local function opts_()
   return config.options.prompt
 end
 
-local function nerd()
-  return vim.g.have_nerd_font ~= false
-end
-
 local function swatch()
-  return nerd() and '■' or '#'
+  return '██'
 end
 
 local function uses_in(buf)
@@ -164,14 +160,21 @@ local function rows(P, width)
       elseif l.choices then
         shown_name = shown_name .. ' …'
       end
-      local used = vim.fn.strdisplaywidth(left) + 2 + keyw + 2 + vim.fn.strdisplaywidth(shown_name)
+      local colors = buffer.get(P.src_buf) and buffer.get(P.src_buf).colors
+      local color = sets.color(value, colors)
+      -- the colour's name, after your name for the label when there's room
+      local cname = sets.color_name(value, colors)
+      if cname then cname = (shown_name ~= '' and ' · ' or '') .. cname end
+      local used = vim.fn.strdisplaywidth(left) + 3 + keyw + 2 + vim.fn.strdisplaywidth(shown_name)
+      if cname and used + vim.fn.strdisplaywidth(cname) + 1 + vim.fn.strdisplaywidth(right) > width then cname = nil end
+      used = used + (cname and vim.fn.strdisplaywidth(cname) or 0)
       local pad = math.max(1, width - used - vim.fn.strdisplaywidth(right))
-      local color = sets.color(value, buffer.get(P.src_buf) and buffer.get(P.src_buf).colors)
       out[#out + 1] = {
         { left, hl(selected and 'Special' or 'NormalFloat') },
         { swatch() .. ' ', hl(color and sets.fg_group(color) or 'NormalFloat') },
         { key .. '  ', hl(selected and 'Special' or 'NormalFloat') },
         { shown_name, hl('NormalFloat') },
+        { cname or '', hl('Comment') },
         { string.rep(' ', pad) .. right, hl('Comment') },
       }
     end
@@ -194,7 +197,7 @@ local function rows(P, width)
         { c.key .. '  ', hl(selected and 'Special' or 'NormalFloat') },
         { c.name, hl('NormalFloat') },
       }
-      local used = 2 + 2 + vim.fn.strdisplaywidth(c.key) + 2 + vim.fn.strdisplaywidth(c.name)
+      local used = 2 + 3 + vim.fn.strdisplaywidth(c.key) + 2 + vim.fn.strdisplaywidth(c.name)
       line[#line + 1] = { string.rep(' ', math.max(0, width - used)), hl('NormalFloat') }
       out[#out + 1] = line
     end
