@@ -482,6 +482,7 @@ local function setup_autocmds()
   end)
   au('ColorScheme', function()
     sets.apply_highlights()
+    require('earmark.render').apply_highlights()
   end)
 end
 
@@ -496,6 +497,7 @@ function M.setup(opts)
   register_actions()
   actions.apply_keymaps(config.options.keys)
   setup_autocmds()
+  require('earmark.render').setup()
   api.nvim_create_user_command('Earmark', actions.run_command, {
     nargs = '*',
     range = true,

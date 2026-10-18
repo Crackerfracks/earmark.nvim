@@ -70,6 +70,21 @@ function M.oklch_to_hex(L, C, h)
   return M.rgb_to_hex(linear_to_srgb(r), linear_to_srgb(g), linear_to_srgb(b))
 end
 
+--- OKLab mean of hex colours (the colour an overlap of them is drawn in).
+function M.mix(hexes)
+  local L, a, b = 0, 0, 0
+  for _, hex in ipairs(hexes) do
+    local l1, a1, b1 = M.rgb_to_oklab(M.hex_to_rgb(hex))
+    L, a, b = L + l1, a + a1, b + b1
+  end
+  local n = #hexes
+  local r, g, bl = oklab_to_linear(L / n, a / n, b / n)
+  local function clip(c)
+    return math.max(0, math.min(1, c))
+  end
+  return M.rgb_to_hex(linear_to_srgb(clip(r)), linear_to_srgb(clip(g)), linear_to_srgb(clip(bl)))
+end
+
 --- Perceptual distance between two hex colors (Euclidean in OKLab).
 function M.distance(hex1, hex2)
   local L1, a1, b1 = M.rgb_to_oklab(M.hex_to_rgb(hex1))
