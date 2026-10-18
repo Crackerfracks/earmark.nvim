@@ -924,6 +924,19 @@ function M.setup(opts)
       return a and a.complete and a.complete(args) or {}
     end,
   })
+  -- which-key: name the <leader>m group so the prefix doesn't show as "+prefix"
+  local uses_prefix = false
+  for _, lhs in pairs(config.options.keys or {}) do
+    if type(lhs) == 'string' and vim.startswith(lhs, '<leader>m') then uses_prefix = true end
+  end
+  if uses_prefix then
+    vim.schedule(function()
+      local ok, wk = pcall(require, 'which-key')
+      if ok and type(wk.add) == 'function' then
+        pcall(wk.add, { { '<leader>m', group = 'earmark', icon = { icon = '󰃉', color = 'yellow' } } })
+      end
+    end)
+  end
   -- Buffers loaded before setup (e.g. the file Neovim was started with).
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and api.nvim_buf_get_name(buf) ~= '' then
