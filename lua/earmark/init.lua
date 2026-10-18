@@ -731,9 +731,24 @@ function M.color(args)
   buffer.set_color(0, h.a.values[1], arg:lower())
 end
 
-function M.zk()
+local ZK_SUBCOMMANDS = { 'new', 'link', 'pick', 'sources' }
+
+--- `<leader>mz` / `:Earmark zk [new|link|pick|sources]`: promote the annotation under the
+--- cursor to a zk note, or open the note it has; in a note with nothing under the cursor,
+--- list the annotations linked to it.
+local function zk_action(args)
+  local zk = require('earmark.zk')
+  local sub = type(args) == 'table' and args[1] or nil
+  if sub == 'pick' then return zk.pick(vim.list_slice(args, 2)) end
+  if sub == 'sources' then return zk.sources(0) end
+  if sub and sub ~= 'new' and sub ~= 'link' then
+    return notify('unknown: :Earmark zk ' .. sub .. ' (' .. table.concat(ZK_SUBCOMMANDS, ', ') .. ')', vim.log.levels.WARN)
+  end
+  if not sub and #buffer.find(0, cursor_pos()) == 0 and zk.is_note(0) then return zk.sources(0) end
   local h = hit_under_cursor()
-  if h then require('earmark.zk').promote(0, h.a.id) end
+  if not h then return end
+  if sub == 'link' then return zk.link(0, h.a.id) end
+  zk.promote(0, h.a.id, { force = sub == 'new', ask = true })
 end
 
 function M.tags()
@@ -860,6 +875,22 @@ function M.pick(opts)
   return pick_file(q)
 end
 
+--- zk notes (see README, zk). Calling it runs `<leader>mz`.
+M.zk = setmetatable({
+  --- Promote annotation `id` to a zk note; cb(err, path). opts = { force, open, ask }.
+  promote = function(buf, id, opts, cb)
+    return require('earmark.zk').promote(buf or 0, id, opts, cb)
+  end,
+  --- The notebook of a buffer or file path: path, or nil and why not.
+  notebook = function(buf)
+    return require('earmark.zk').notebook(buf or 0)
+  end,
+  --- Absolute path of an annotation's note (nil when it has none). `buf`: where it lives.
+  path = function(a, buf)
+    return require('earmark.zk').path(a, buf or 0)
+  end,
+}, { __call = function(_, args) return zk_action(args) end })
+
 --- Show / hide the hover for what's under the cursor.
 M.hover = {
   show = function()
@@ -872,7 +903,7 @@ M.hover = {
 }
 
 --- Run `fn(data)` on an earmark event: 'Changed', 'Add', 'Update', 'Erase', 'Restore',
---- 'Repair', 'Note', 'Load' (or the full 'EarmarkNote'). data = { buf, action, ids }.
+--- 'Repair', 'Note', 'Load', 'Zk' (or the full 'EarmarkNote'). data = { buf, action, ids }.
 --- Returns the autocmd id.
 function M.on(event, fn)
   local pattern = event:match('^Earmark') and event or ('Earmark' .. event:sub(1, 1):upper() .. event:sub(2))
@@ -922,7 +953,11 @@ local function register_actions()
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
   A({ name = 'export', desc = 'export annotations to Markdown', modes = { n = function() require('earmark.export').run(0) end } })
-  A({ name = 'zk', desc = 'promote to a zk note', modes = { n = M.zk } })
+  A({ name = 'zk', desc = 'promote to a zk note, or open its note', modes = { n = function() zk_action() end }, cmd = zk_action,
+    complete = function(args)
+      if #args ~= 3 then return {} end
+      return vim.tbl_filter(function(c) return vim.startswith(c, args[3]) end, ZK_SUBCOMMANDS)
+    end })
   A({ name = 'occurrences', desc = 'annotate other occurrences of this text', modes = { n = M.occurrences } })
   A({ name = 'regrow', desc = 'move the annotation onto a motion', modes = { n = M.regrow_expr, x = M.regrow_expr }, expr = true, cmd = false })
   A({ name = 'palette', desc = 'the set\'s colours as labelled patches', modes = { n = function() require('earmark.ui.palette').open() end },

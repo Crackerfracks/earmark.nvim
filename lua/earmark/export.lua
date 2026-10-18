@@ -31,7 +31,7 @@ local function lines_ref(x)
 end
 
 --- One list item for a placed annotation.
-local function item(buf, x, with_name)
+local function item(buf, x, with_name, dest_dir)
   local a = x.annotation
   local head = {}
   if with_name then
@@ -52,13 +52,15 @@ local function item(buf, x, with_name)
       out[#out + 1] = l == '' and '' or ('  ' .. l)
     end
   end
+  if a.zk then out[#out + 1] = '  ' .. require('earmark.zk').export_link(buf, a, dest_dir) end
   return out
 end
 
 --- Markdown lines for the annotations of `buf`.
 --- opts.group_by: 'label' (default) | 'position' | 'tag' | 'time';
 --- opts.include_detached (default true); opts.format(annotations, ctx) -> lines replaces the
---- body (config `export.format` too).
+--- body (config `export.format` too); opts.dest: the file it will be written to (links to zk
+--- notes are made relative to it).
 function M.markdown(buf, opts)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   opts = vim.tbl_extend('force', config.options.export, opts or {})
@@ -80,7 +82,7 @@ function M.markdown(buf, opts)
       out[#out + 1] = '## ' .. title
     end
     for _, x in ipairs(xs) do
-      vim.list_extend(out, item(buf, x, with_name))
+      vim.list_extend(out, item(buf, x, with_name, opts.dest and vim.fs.dirname(opts.dest)))
     end
     out[#out + 1] = ''
   end
@@ -189,10 +191,9 @@ function M.run(buf)
   vim.ui.input({ prompt = 'Export to: ', default = paths[1], completion = 'file' }, function(path)
     if not path or vim.trim(path) == '' then return end
     path = vim.fs.normalize(vim.fn.fnamemodify(vim.trim(path), ':p'))
-    local body = M.markdown(buf)
     local function write(p)
       vim.fn.mkdir(vim.fs.dirname(p), 'p')
-      return pcall(vim.fn.writefile, body, p)
+      return pcall(vim.fn.writefile, M.markdown(buf, { dest = p }), p)
     end
     local ok, err = write(path)
     if not ok then

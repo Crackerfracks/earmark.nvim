@@ -50,7 +50,7 @@ M.defaults = {
     export = '<leader>me', -- Markdown export of this file's annotations
     occurrences = '<leader>mo', -- annotate every other occurrence of the text under the cursor
     regrow = '<leader>mg', -- <leader>mg{motion}: move the annotation under the cursor onto the motion
-    zk = '<leader>mz', -- promote the annotation under the cursor to a zk note (zk-nvim)
+    zk = '<leader>mz', -- promote the annotation under the cursor to a zk note, or open its note
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
@@ -118,8 +118,18 @@ M.defaults = {
     -- path, or a list of these to write every one (the first is the one you're asked about).
     location = 'project',
   },
+  -- zk notes (`<leader>mz`), made with the zk command line.
   zk = {
-    dir = nil, -- notebook subdirectory for promoted notes
+    cmd = 'zk',
+    -- The notebook. Default: the nearest directory with `.zk` above the file, then
+    -- $ZK_NOTEBOOK_DIR.
+    notebook = nil,
+    -- Notebook subdirectory for new notes, or function(ctx) -> subdirectory, where ctx =
+    -- { buf, annotation, value, label, notebook, source }.
+    dir = nil,
+    -- Your own zk template instead of earmark's. It gets the body only (quote, note, source
+    -- link) and --extra id=,set=,key=,line=; earmark then writes no frontmatter.
+    template = nil,
     open = true, -- open the new note in a split
   },
   statusline = {
