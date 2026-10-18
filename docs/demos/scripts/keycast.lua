@@ -2,11 +2,19 @@
 --   * a title line (the editing window's winbar) saying what the clip demonstrates;
 --   * a key box at the bottom right: the keys you typed (vim.on_key), with an optional note
 --     above them saying what the current step does.
--- record.py sets the title/note and clears the keys between steps over RPC (Demo_step).
+-- record.py sets the title/note over RPC (Demo_step). Recordings draw the key box outside Neovim
+-- instead (EARMARK_DEMO_KEYBOX=outside, see keyview.py): while a count, an operator or a mapping
+-- prefix such as <leader>m waits for more keys, Neovim redraws nothing, so a box drawn here can
+-- only show those keys once the command is complete.
 local api = vim.api
 local ns = api.nvim_create_namespace('earmark_keycast')
 local keys, note, title = {}, '', ''
+local fresh = false -- keys from the previous step stay up until the first new key
+local outside = os.getenv('EARMARK_DEMO_KEYBOX') == 'outside'
 local buf, win
+
+-- frames are taken between keystrokes, which can take longer than 'timeoutlen'
+vim.o.timeoutlen = 10000
 
 api.nvim_set_hl(0, 'KeycastKeys', { fg = '#1a1b26', bg = '#e0af68', bold = true })
 api.nvim_set_hl(0, 'KeycastNote', { fg = '#c0caf5', bg = '#2f3549', italic = true })
@@ -17,12 +25,13 @@ api.nvim_set_hl(0, 'DemoTitleFill', { bg = '#1f2335' })
 -- How keys are shown: <leader> for Space outside Insert mode, readable names for the rest.
 local NAMES = {
   ['<CR>'] = ' ⏎Enter ', ['<Esc>'] = ' Esc ', ['<Tab>'] = ' Tab ', ['<S-Tab>'] = ' S-Tab ',
-  ['<BS>'] = ' ⌫ ', ['<Down>'] = ' ↓ ', ['<Up>'] = ' ↑ ', ['<C-N>'] = ' Ctrl-n ',
+  ['<BS>'] = ' ←Backspace ', ['<Down>'] = ' ↓ ', ['<Up>'] = ' ↑ ', ['<C-N>'] = ' Ctrl-n ',
   ['<C-P>'] = ' Ctrl-p ', ['<C-S>'] = ' Ctrl-s ', ['<C-V>'] = ' Ctrl-v ', ['<C-U>'] = ' Ctrl-u ',
-  ['<lt>'] = '<',
+  ['<lt>'] = '<', ['<Bar>'] = '|', ['<Bslash>'] = '\\',
 }
 
 local function render()
+  if outside then return end
   if not (buf and api.nvim_buf_is_valid(buf)) then buf = api.nvim_create_buf(false, true) end
   local shown = table.concat(keys)
   if shown == '' and note == '' then
@@ -70,8 +79,9 @@ local function schedule_render()
   end)
 end
 
+-- Drawn right away rather than scheduled: scheduled work waits while an operator is pending.
 vim.on_key(function(_, typed)
-  if not typed or typed == '' then return end
+  if outside or not typed or typed == '' then return end
   local k = vim.fn.keytrans(typed)
   if k:match('Mouse') or k:match('^<Scroll') or k:match('^<Cursor') or k:match('^<Ignore') then return end
   -- a completed mapping can arrive as one chunk ("<Space>mx"), so translate inside it
@@ -81,9 +91,11 @@ vim.on_key(function(_, typed)
     if name == '<Space>' then return space end
     return NAMES[name]
   end)
+  if fresh then keys, fresh = {}, false end
   keys[#keys + 1] = k
   while #keys > 40 do table.remove(keys, 1) end
-  schedule_render()
+  if not pcall(render) then schedule_render() end
+  pcall(api.nvim__redraw, { flush = true })
 end, ns)
 
 local function title_bar()
@@ -104,11 +116,13 @@ local function set_winbars()
   end
 end
 
---- Set the clip title (nil keeps it) and the step note, and clear the keys.
-function _G.Demo_step(t, n)
+--- Set the clip title (nil keeps it) and the step note; the keys clear when the next key comes
+--- (or now, with clear).
+function _G.Demo_step(t, n, clear)
   if type(t) == 'string' then title = t end
   note = type(n) == 'string' and n or ''
-  keys = {}
+  fresh = true
+  if clear == 1 or clear == true then keys = {} end
   set_winbars()
   pcall(render)
   vim.cmd.redraw()

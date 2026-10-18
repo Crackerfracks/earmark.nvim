@@ -181,23 +181,18 @@ card('live-edits', 'Edits, deletes and undo', ESSAY,
 card('external-edit', 'Edits outside Neovim', ESSAY,
      [('add two lines near the top with sed', ":!sed -i '2a The council met late on Tuesday.\\n' %<CR>"),
       ('reload', ':e<CR>')],
-     'The file was changed behind Neovim\'s back, then reloaded. <b>What should happen:</b> every annotation moves '
-     'down two lines with its words. <b>What happens:</b> the re-anchored highlights are drawn, but the old ones stay '
-     'at their old lines and columns, drawn as stale, on top of the wrong words ("t late on Tuesday.", "Several membe"). '
-     'Opening the same edited file fresh (quit and reopen) places every annotation correctly. See the known issue below.',
-     'Formatters, git checkouts and other editors change files under you; this is the case that needs to work.',
+     'The file was changed behind Neovim\'s back, then reloaded with <code>:e</code>. Every annotation moves down '
+     'with its words; nothing is left behind at the old places.',
+     'Formatters, git checkouts and other editors change files under you; the marks follow the text.',
      'Default to confirm (item 8): text snapshots in <code>.earmark/snap/</code> are gitignored, so a fresh clone '
      're-anchors by quote and context only.')
-card('external-edit-bug', 'Known issue: reloading keeps the old highlights', ESSAY,
+card('external-edit-inline', 'An outside edit inside an annotated line', ESSAY,
      [('insert words before "approved" with sed',
        ":!sed -i 's/The committee approved/After midnight, the committee finally approved/' %<CR>"),
       ('reload', ':e<CR>')],
-     'Same problem inside one line: "approved the annual budget" stays painted over ", the committee finally ap". '
-     'Each <code>:e!</code> adds another set of highlights. Likely cause: the BufReadPost handler '
-     '(<code>lua/earmark/init.lua:899</code>) repairs via <code>buffer.on_change</code>, which, unlike '
-     '<code>buffer.reload</code>, never clears the <code>earmark</code> extmark namespace, so the marks Neovim kept '
-     'through the reload survive next to the re-anchored ones.',
-     'This is a bug, not a default: it is shown so it can be fixed.')
+     'Words are added in front of the annotation on the same line. After <code>:e</code> the highlights are still '
+     'on "approved the annual budget" and "budget", not at the old columns.',
+     'Re-anchoring works by the words, not by line and column.')
 card('review', 'Review what changed: <leader>md', CHANGED,
      [('open the review list', '<leader>md'), ('choose the first', '<CR>'), ('Compare', '<C-n><CR>')],
      'notes/changed.md was annotated, then edited outside Neovim: "grew by 40%" became "shrank to 4%" (stale) and '
@@ -428,8 +423,10 @@ each annotation stays on its words. If the words themselves are rewritten it is 
 are deleted it is <i>detached</i> and kept, so nothing is silently lost.</p>
 <p><b>Notes on labels.</b> Any annotation can carry a Markdown note with <code>#tags</code>; a small hover shows it
 when the cursor rests there, and pickers, the quickfix list and a Markdown export find it again.</p>
-<p><b>How to read the clips.</b> The blue bar at the top says what the clip shows. The box at the bottom right
-shows a note for the current step and the <b>keys typed</b> (<code>&lt;leader&gt;</code> is Space). Every clip uses
+<p><b>How to read the clips.</b> The blue bar at the top says what the clip shows. The box under the editor
+shows a note for the current step and, on the yellow line, the <b>keys as they are typed</b>, one at a time
+(<code>&lt;leader&gt;</code> is Space). Each step waits a moment before the keys, so you can read the note, and
+holds the result a few seconds; the keys stay up until the next step starts. Every clip uses
 earmark's <b>default settings</b> unless its card says otherwise. Boxes marked like this one call out a default
 you are asked to confirm:</p>
 <p class="default">Default to confirm (item N): … (the numbers are the list at the end of the README, under "Status").</p>
