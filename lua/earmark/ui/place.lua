@@ -46,6 +46,9 @@ function M.for_span(win, s, e, w, h, opts)
   local wrow, wcol = unpack(api.nvim_win_get_position(win))
   local info = vim.fn.getwininfo(win)[1]
   local textoff = info and info.textoff or 0
+  -- screenpos() and the window height count the winbar row, a relative='win' float starts under it
+  local winbar = info and info.winbar or 0
+  wrow, H = wrow + winbar, H - winbar
   -- the span's last line may end with an empty end column: use the last included char
   local erow, ecol = e[1], e[2]
   if ecol == 0 and erow > s[1] then erow = erow - 1 end

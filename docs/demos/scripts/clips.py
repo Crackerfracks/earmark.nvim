@@ -349,6 +349,7 @@ def _(c):
     c.step('5', 'a digit jumps to that key: 5 ("Vague")', before=0, hold=2.0)
     c.step('<Tab>', 'Tab shows the next set', before=0, hold=2.5)
     c.step('<S-Tab>', 'Shift-Tab goes back', before=0)
+    c.step('5', 'back on vivid, 5 again', before=0)
     c.step('<CR>', 'Enter makes label 5 the one gh offers first (see the statusline)', before=0, hold=3.0)
 
 
@@ -420,7 +421,7 @@ def _(c):
     c.step('<C-w>p', 'back to the essay: the hover now shows the note (↗ zk)', before=0, hold=3.0)
     c.step(' mz', 'again: the same note opens, no duplicate', hold=2.5)
     c.step(' mz', 'inside the note: the annotations that link to it', hold=3.0)
-    c.step('<Esc>', 'close the list', before=0)
+    c.step('<Esc><Esc>', 'close the list (Esc leaves the input, Esc again closes)', before=0)
 
 
 @clip('tags', '<leader>mt: add or remove tags', file=ESSAY, cursor=(9, 2))
