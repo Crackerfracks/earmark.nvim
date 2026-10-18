@@ -54,6 +54,21 @@ T['shows tags, identifiers, pencil and the note'] = function()
   eq(vim.list_slice(hv.lines, 2), { 'check this #todo @A', 'second line' })
 end
 
+T['a second label gets its own line, so the header stays short'] = function()
+  h.open()
+  local id = mark({ 0, 4 }, { 0, 9 }, '3')
+  child.lua([[require('earmark.buffer').set_values(0, ..., { { set = 'vivid', label = '3' }, { set = 'vivid', label = '5' } })
+    require('earmark.buffer').set_note(0, ..., 'n')]], { id })
+  h.cursor(1, 0)
+  move('5l')
+  local hv = hover()
+  eq(hv.lines[1]:find('vivid·3', 1, true) ~= nil, true)
+  eq(hv.lines[1]:find('vivid·5', 1, true), nil)
+  eq(hv.lines[2]:sub(1, 2), '+ ')
+  eq(hv.lines[2]:find('vivid·5', 1, true) ~= nil, true)
+  eq(hv.lines[3], 'n')
+end
+
 T['stays while moving within the span, closes when leaving it'] = function()
   h.open()
   local id = mark({ 0, 4 }, { 0, 9 })
@@ -84,6 +99,39 @@ T['stays inside the window: above the span near the bottom'] = function()
   eq(hv.row + hv.height + 2 <= srow, true) -- entirely above the cursor line
   eq(hv.row >= 0 and hv.row + hv.height + 2 <= wh, true)
   eq(hv.col + hv.width + 2 <= child.api.nvim_win_get_width(0), true)
+end
+
+T['with a winbar: above the span, not over it'] = function()
+  local lines = {}
+  for i = 1, 60 do
+    lines[i] = 'line ' .. i .. ' with some words in it'
+  end
+  h.open(lines)
+  child.wo.winbar = 'title'
+  child.cmd('normal! G')
+  local id = mark({ 59, 5 }, { 59, 7 })
+  child.lua('require("earmark.buffer").set_note(0, ..., "one\\ntwo")', { id })
+  move('0w')
+  local hv = hover()
+  local srow = child.fn.winline() - 1 -- 0-based row of the cursor in the text area (under the winbar)
+  eq(hv.row + hv.height + 2 <= srow, true)
+end
+
+T['with a winbar: no room below the span near the bottom, so not below it'] = function()
+  local lines = {}
+  for i = 1, 60 do
+    lines[i] = 'line ' .. i .. ' with some words in it'
+  end
+  h.open(lines)
+  child.wo.winbar = 'title'
+  local wh = child.fn.winheight(0) -- text rows, without the winbar
+  local id = mark({ 29, 5 }, { 29, 7 })
+  child.lua('require("earmark.buffer").set_note(0, ..., "one")', { id })
+  -- line 30 on text row wh-4: 3 rows left under it, the bordered hover needs 4
+  child.fn.winrestview({ topline = 30 - (wh - 4), lnum = 30, col = 0 })
+  move('w')
+  local hv = hover()
+  eq(hv.row >= 0 and hv.row + hv.height + 2 <= wh, true)
 end
 
 T['closes on Insert mode and on operator-pending'] = function()
