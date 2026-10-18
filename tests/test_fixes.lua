@@ -185,4 +185,38 @@ T['reloading after an outside edit leaves no highlight at the old place'] = func
   eq(marks, { { 2, 4 } })
 end
 
+T['a reload that keeps the buffer loaded (checktime, autoread) places annotations again'] = function()
+  h.open({ 'one two three', 'four five six' })
+  child.lua('require("earmark").annotate(0, { 0, 4 }, { 0, 7 }, { set = "vivid", label = "3" })')
+  h.settle(300)
+  child.lua('vim.fn.writefile({ "zero", "", "one two three", "four five six" }, vim.api.nvim_buf_get_name(0))')
+  child.cmd('checktime')
+  h.settle(300)
+  local marks = child.lua_get([[vim.tbl_map(function(m) return { m[2], m[3], m[4].end_col } end,
+    vim.api.nvim_buf_get_extmarks(0, require('earmark.buffer').ns, 0, -1, { details = true }))]])
+  eq(marks, { { 2, 4, 7 } })
+  eq(child.lua_get('require("earmark").list(0)[1].annotation.status'), 'ok')
+end
+
+T['an annotation edited into a different text is drawn stale right away'] = function()
+  h.open({ 'alpha beta gamma delta' })
+  child.lua('require("earmark").annotate(0, { 0, 6 }, { 0, 16 }, { set = "vivid", label = "3" })')
+  h.settle(200)
+  child.lua('vim.api.nvim_buf_set_text(0, 0, 7, 0, 15, { "q" })')
+  h.settle(400)
+  local hl = child.lua_get([[vim.api.nvim_buf_get_extmarks(0, require('earmark.buffer').ns, 0, -1, { details = true })[1][4].hl_group]])
+  eq(hl:match('Stale$') ~= nil, true)
+end
+
+T['the global statusline keeps showing the annotated buffer while a float has focus'] = function()
+  child.o.laststatus = 3
+  h.open()
+  child.lua('require("earmark").annotate(0, { 0, 4 }, { 0, 9 }, { set = "vivid", label = "3" })')
+  local before = child.lua_get('require("earmark").statusline()')
+  child.lua([[vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), true,
+    { relative = 'editor', row = 1, col = 1, width = 10, height = 2 })]])
+  eq(child.lua_get('require("earmark").statusline()'), before)
+  eq(before ~= '', true)
+end
+
 return T

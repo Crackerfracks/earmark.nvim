@@ -208,9 +208,12 @@ function M.refresh_snapshot(buf, S)
         pos[id] = { s = s, e = e }
         local text = anchor.span_text(t, s, e)
         if text ~= a.quote then
+          local was = a.status
           a.quote = text
           a.status = status_for(a, text)
           a.updated = now()
+          -- ok <-> stale changes the highlight group (stale is drawn underdashed)
+          if a.status ~= was then render(buf, S, a, s, e) end
         end
         -- keep the context as long as it was made (longer where the quote isn't unique)
         local n = math.min(anchor.MAX_CONTEXT + 16, math.max(ctx, #(a.prefix or ''), #(a.suffix or '')))
@@ -450,6 +453,21 @@ function M.get(buf, opts)
     M.track(buf, S)
   end
   return S
+end
+
+--- The buffer's text was read again without unloading it (`:checktime`, 'autoread', `:e!`
+--- on a buffer that stays loaded). Its extmarks stay where they were, now over unrelated
+--- text, so drop them all and place every annotation again from the snapshot.
+function M.reloaded(buf)
+  buf = bufnr(buf)
+  local S = M.state[buf]
+  if not S then return end
+  api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
+  api.nvim_buf_clear_namespace(buf, M.ns_swatch, 0, -1)
+  S.ext, S.by_ext, S.swatch = {}, {}, {}
+  S.grow, S.pending = nil, nil
+  M.on_change(buf)
+  M.cache_positions(buf)
 end
 
 --- Re-read a buffer's record from disk (e.g. after :e! or an external change).

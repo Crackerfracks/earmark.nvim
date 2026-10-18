@@ -899,7 +899,7 @@ local function setup_autocmds()
   au('BufReadPost', function(ev)
     sync_sets(ev.buf)
     if buffer.state[ev.buf] then
-      buffer.on_change(ev.buf) -- :e! / external reload: repair from the in-memory snapshot
+      buffer.reloaded(ev.buf) -- external reload: place again from the in-memory snapshot
     else
       buffer.get(ev.buf)
     end

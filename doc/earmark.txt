@@ -328,9 +328,11 @@ is the current buffer. A value is
 earmark.annotate({buf}, {s}, {e}, {value})              *earmark.annotate()*
     Add an annotation; returns it.
 earmark.list({buf})                                         *earmark.list()*
-    `{ { annotation, s, e }, ... }` in order; s and e are nil when detached.
+    `{ { annotation = a, s = {row, col}, e = {row, col} }, ... }` in order;
+    s and e are nil when detached.
 earmark.at({buf}, {pos})                                      *earmark.at()*
-    Annotations at {pos} (default: cursor), innermost first.
+    Annotations at {pos} (default: cursor), innermost first, in the same
+    shape as |earmark.list()|.
 earmark.get({buf}, {id})                                     *earmark.get()*
 earmark.set_note({buf}, {id}, {text})                   *earmark.set_note()*
     nil or '' clears the note.

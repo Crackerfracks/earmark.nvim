@@ -122,6 +122,66 @@ local function map_index(hunks, i, side)
   return i + delta, false
 end
 
+--- Split a string into words, runs of whitespace and single other characters. Returns the
+--- tokens and their 0-based byte offsets. Bytes >= 0x80 count as word characters.
+local function words(s)
+  local toks, offs = {}, {}
+  local i = 1
+  while i <= #s do
+    local _, e = s:find('^[%w_\128-\255]+', i)
+    if not e then _, e = s:find('^%s+', i) end
+    e = e or i
+    toks[#toks + 1], offs[#offs + 1] = s:sub(i, e), i - 1
+    i = e + 1
+  end
+  return toks, offs
+end
+
+--- Hunks of a word diff (as token_hunks). Histogram prefers rare words as anchors, so a
+--- common word like "the" doesn't pull the alignment into an unrelated sentence.
+local function word_hunks(a, b)
+  if #a == 0 and #b == 0 then return {} end
+  local function doc(ts)
+    if #ts == 0 then return '' end
+    local out = {}
+    for i, t in ipairs(ts) do
+      out[i] = t:gsub('\n', NL)
+    end
+    return table.concat(out, '\n') .. '\n'
+  end
+  return diff(doc(a), doc(b), { result_type = 'indices', algorithm = 'histogram' })
+end
+
+--- Index of the last element of the ascending list `offs` that is <= x.
+local function last_le(offs, x)
+  local lo, hi = 1, #offs
+  while lo < hi do
+    local mid = math.floor((lo + hi + 1) / 2)
+    if offs[mid] <= x then lo = mid else hi = mid - 1 end
+  end
+  return lo
+end
+
+--- 0-based start of the last (possibly multibyte) character in s[from, to).
+local function last_char_start(s, from, to)
+  local i = to - 1
+  while i > from and s:byte(i + 1) >= 0x80 and s:byte(i + 1) < 0xC0 do
+    i = i - 1
+  end
+  return i
+end
+
+--- Map byte `rel` of `a` to `b` through a character diff. Returns a 0-based offset of a
+--- character in b, -1 (before it) or #b (after it). `side` as in map_index.
+local function char_map(a, b, rel, side)
+  local a_chars, a_offs = chars(a)
+  local b_chars, b_offs = chars(b)
+  local j = map_index(token_hunks(a_chars, b_chars), last_le(a_offs, rel), side)
+  if j < 1 then return -1 end
+  if j > #b_offs then return #b end
+  return b_offs[j]
+end
+
 ---------------------------------------------------------------------------
 -- Searching
 ---------------------------------------------------------------------------
@@ -449,30 +509,44 @@ function M.reanchor(old_lines, new_lines, items)
   local seg_cache = {}
 
   -- Map offset `off` (0-based, in old text) inside the old segment [a_base, a_base + #a_str)
-  -- to the new segment starting at b_base, through a character diff of the two segments.
+  -- to the new segment starting at b_base. The segments are diffed by words first, so a
+  -- replaced word maps to its replacement as a whole ("two" -> "four", not "fo"); only
+  -- inside a run of changed words is a character diff used.
   local function seg_map(key, a_str, a_base, b_str, b_base, off, side)
     local sc = seg_cache[key]
     if not sc then
-      local a_chars, a_offs = chars(a_str)
-      local b_chars, b_offs = chars(b_str)
-      sc = { a_offs = a_offs, a_len = #a_str, b_offs = b_offs, b_len = #b_str, hunks = token_hunks(a_chars, b_chars) }
+      local a_toks, a_offs = words(a_str)
+      local b_toks, b_offs = words(b_str)
+      sc = { a_offs = a_offs, a_len = #a_str, b_offs = b_offs, b_len = #b_str, hunks = word_hunks(a_toks, b_toks) }
       seg_cache[key] = sc
     end
     local rel = off - a_base
-    local offs, idx = sc.a_offs, #sc.a_offs + 1 -- default: the newline right after the segment
-    if rel < sc.a_len then
-      -- the char containing byte `rel`: last char start <= rel
-      local lo, hi = 1, #offs
-      while lo < hi do
-        local mid = math.floor((lo + hi + 1) / 2)
-        if offs[mid] <= rel then lo = mid else hi = mid - 1 end
-      end
-      idx = lo
+    if rel >= sc.a_len then
+      -- the newline right after the segment
+      local j = map_index(sc.hunks, #sc.a_offs + 1, side)
+      if j > #sc.b_offs then return b_base + sc.b_len end
+      return b_base + sc.b_offs[j]
     end
-    local j = map_index(sc.hunks, idx, side)
-    if j < 1 then return b_base - 1 end
-    if j > #sc.b_offs then return b_base + sc.b_len end
-    return b_base + sc.b_offs[j]
+    local ti = last_le(sc.a_offs, rel)
+    local j, changed, h = map_index(sc.hunks, ti, side)
+    if not changed then return b_base + sc.b_offs[j] + (rel - sc.a_offs[ti]) end
+    -- inside a run of changed words: old run [ra, ra_end) maps to new run [rb, rb_end)
+    local ra = sc.a_offs[h[1]]
+    local ra_end = sc.a_offs[h[1] + h[2]] or sc.a_len
+    if h[4] == 0 then
+      -- the words were deleted: the next word (start) or the end of the previous one (last)
+      local rb = sc.b_offs[h[3] + 1] or sc.b_len
+      if side == 'start' then return b_base + rb end
+      return b_base + last_char_start(b_str, 0, rb)
+    end
+    local rb = sc.b_offs[h[3]]
+    local rb_end = sc.b_offs[h[3] + h[4]] or sc.b_len
+    if side == 'start' and rel == ra then return b_base + rb end
+    if side == 'last' and rel == last_char_start(a_str, ra, ra_end) then
+      return b_base + last_char_start(b_str, rb, rb_end)
+    end
+    local r = char_map(a_str:sub(ra + 1, ra_end), b_str:sub(rb + 1, rb_end), rel - ra, side)
+    return b_base + rb + r
   end
 
   -- Map a 0-based byte offset of a character in old text to the new text.

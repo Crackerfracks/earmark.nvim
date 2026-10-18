@@ -383,8 +383,8 @@ current buffer. A value is `{ set = 'vivid', label = '3', choice = 'b'?, text = 
 ```lua
 local em = require('earmark')
 local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
-em.list(buf)                -- { { annotation, s, e }, ... } sorted; s/e nil when detached
-em.at(buf, pos)             -- annotations at pos (default cursor), innermost first
+em.list(buf)                -- { { annotation = a, s = {r,c}, e = {r,c} }, ... } sorted; s/e nil when detached
+em.at(buf, pos)             -- same shape, at pos (default cursor), innermost first
 em.get(buf, a.id)
 em.set_note(buf, a.id, 'text #tag')   -- nil or '' clears
 em.set_tags(buf, a.id, { 'todo' })
