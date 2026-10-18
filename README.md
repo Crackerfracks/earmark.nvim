@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Notes, hover, tags, pickers and project label-set files are next.
+Status: early. Tags, end-of-line indicators, pickers and project label-set files are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -44,7 +44,9 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mu` | restore the most recently erased |
 | `<leader>mn` / `<leader>mN` | next / previous annotation |
 | `<leader>ms` | switch to the next label set |
-| `<leader>mi` | show label, status and original text under cursor |
+| `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
+| `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
+| `<leader>mh` | automatic hover on / off |
 
 ### The label prompt
 
@@ -73,6 +75,20 @@ use it in a file; `'always'` and `'never'` do what they say.
 Annotating exactly the same span again changes its label (with the same label it does
 nothing).
 
+### Notes and the hover
+
+`<leader>mm` opens the annotation's note, a Markdown buffer in a float right under the
+span (an empty note starts in Insert mode). `q`, `:w`, `<C-s>`, leaving the float or
+closing it any other way saves it; `,s` moves it to a split at the bottom and `,f` back
+(`,` being your `maplocalleader`). Clearing all the text removes the note. Write `#tags`
+and `@identifiers` anywhere in a note; earmark picks them up.
+
+When the cursor rests on an annotation that has a name, a note, tags, extra labels or a
+stale/ambiguous status, a small float shows all of that without taking focus. It stays
+while you move inside the annotation and goes away when you leave it, type, scroll or start
+an operator. Overlapping annotations are listed innermost first (①, ②, …). Set
+`hover.show_when = 'always'` to see it on every annotation.
+
 ### What overlaps look like
 
 - Where annotations of **different labels** overlap, the overlap is drawn in the mix of their
@@ -89,7 +105,9 @@ nothing).
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|toggle_hover|erase|clear|restore|next|prev|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+
+`:Earmark info` (the default) prints the details of the annotations under the cursor.
 
 `:Earmark log` shows recent warnings and errors (also written to `<storage_dir>/earmark.log`).
 
@@ -110,7 +128,8 @@ require('earmark').setup({
     operator = 'gh', line = 'ghh',
     erase = '<leader>mx', clear = '<leader>mX', restore = '<leader>mu',
     next = '<leader>mn', prev = '<leader>mN',
-    cycle_set = '<leader>ms', info = '<leader>mi',
+    cycle_set = '<leader>ms', peek = '<leader>mi',
+    note = '<leader>mm', toggle_hover = '<leader>mh',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
   },
   prompt = {
@@ -119,6 +138,18 @@ require('earmark').setup({
     ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
   },
   ui = { border = 'rounded' },
+  note = {
+    layout = 'float', -- 'float' | 'split'
+    width = 0.6, max_width = 100, -- fraction of the window, and a column cap
+    height = { min = 5, max = 0.5 },
+    winblend = 0,
+  },
+  hover = {
+    auto = true, -- show when the cursor rests on an annotation (<leader>mh toggles)
+    delay = 120, -- ms
+    show_when = 'named_or_note', -- or 'always'
+    max_width = 0.5, max_height = 0.5,
+  },
   overlap = { style = 'blend' }, -- 'blend' | 'top'
 })
 ```
@@ -141,8 +172,8 @@ A count resolves to the label whose key is that number, else to the label at tha
 
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
-`(earmark-cycle-set)`, `(earmark-info)`, `(earmark-relabel)`, `(earmark-add-value)`,
-`(earmark-rename)`.
+`(earmark-cycle-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
+`(earmark-relabel)`, `(earmark-add-value)`, `(earmark-rename)`.
 
 ## Storage
 
