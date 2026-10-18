@@ -15,6 +15,7 @@ Every feature, with clips and the keys to try: [docs/demos/index.html](docs/demo
   see the colour live on the text, press Enter. Tab names the label as you go.
 - **Annotations survive what usually breaks highlights:** live edits, formatters
   rewriting the buffer, `:e!`, edits made outside Neovim, renamed files, and undo.
+  - Changing its first or last words (`cw`, `ciw`, `s`, `C` …) keeps the new words in it.
   - When the annotated text is rewritten, the annotation is marked **stale**.
   - When the text is deleted, it is **detached**, never dropped. It comes back if the text
     returns (undo, paste).
@@ -387,8 +388,8 @@ current buffer. A value is `{ set = 'vivid', label = '3', choice = 'b'?, text = 
 ```lua
 local em = require('earmark')
 local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
-em.list(buf)                -- { { annotation, s, e }, ... } sorted; s/e nil when detached
-em.at(buf, pos)             -- annotations at pos (default cursor), innermost first
+em.list(buf)                -- { { annotation = a, s = {r,c}, e = {r,c} }, ... } sorted; s/e nil when detached
+em.at(buf, pos)             -- same shape, at pos (default cursor), innermost first
 em.get(buf, a.id)
 em.set_note(buf, a.id, 'text #tag')   -- nil or '' clears
 em.set_tags(buf, a.id, { 'todo' })
@@ -486,4 +487,6 @@ Defaults that were decided overnight and are worth a second look:
 Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (one typo) stays
 "ok" rather than "stale"; `<leader>mg` accepts the new text as the annotation's text;
 `<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`); set files are reloaded by checking their
-modification time on focus and buffer switches.
+modification time on focus and buffer switches. New on 2026-10-18: `cw`, `ciw`, `s` or `C` on an
+annotation's first or last words keeps the new words in it (changing all of it keeps it too,
+marked stale) instead of shrinking or detaching it.

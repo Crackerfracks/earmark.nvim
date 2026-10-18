@@ -391,9 +391,10 @@ local function move(P, step)
   else
     if #P.hist == 0 then return end
     P.hist_i = ((P.hist_i - 1 + step) % #P.hist) + 1
+    -- the text change this causes is not typing: keep the history position
+    P.moving = true
     set_input(P, P.hist[P.hist_i].text)
   end
-  P.moving = true
   render(P)
 end
 

@@ -250,4 +250,24 @@ T['re-anchoring a reindented 20k-line buffer stays fast'] = function()
   eq({ 'ms', ms < 1500 }, { 'ms', true })
 end
 
+T['a replaced word maps to its replacement, also when a paragraph above was deleted'] = function()
+  local old = {
+    '# Council minutes', '',
+    'Several members argued that the roads were in worse shape than anyone admitted.',
+    'The motion passed by seven votes to two after midnight.', '',
+    'Revenue grew by 40% last year.',
+  }
+  local new = {
+    '# Council minutes', '',
+    'The motion passed by nine votes to four after midnight.', '',
+    'Revenue grew by 40% last year.',
+  }
+  local out = run(old, new, item(old, 'seven votes to two'), item(old, '40%'))
+  eq(out['seven votes to two'], { text = 'nine votes to four', how = 'edited' })
+  eq(out['40%'].text, '40%')
+  -- the same edit within one line
+  out = run({ old[4] }, { new[3] }, item({ old[4] }, 'seven votes to two'))
+  eq(out['seven votes to two'].text, 'nine votes to four')
+end
+
 return T

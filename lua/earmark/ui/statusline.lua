@@ -36,6 +36,24 @@ local function esc(s)
   return (s:gsub('%%', '%%%%'))
 end
 
+local last_buf -- the last buffer drawn with annotations state
+
+--- The buffer whose statusline is being drawn. A global statusline (laststatus=3) follows
+--- focus into floating windows (earmark's prompt, a picker); it keeps showing the buffer
+--- being annotated instead of going blank.
+local function target_buf()
+  local win = vim.g.statusline_winid
+  if not (win and api.nvim_win_is_valid(win)) then win = api.nvim_get_current_win() end
+  local buf = api.nvim_win_get_buf(win)
+  if buffer.state[buf] then
+    last_buf = buf
+  elseif vim.o.laststatus == 3 and api.nvim_win_get_config(win).relative ~= ''
+    and last_buf and buffer.state[last_buf] then
+    return last_buf
+  end
+  return buf
+end
+
 --- Statusline text for the current buffer ('' when it has no annotations state).
 --- `next_value` is the label the next `gh` would use. opts.hl: the highlight group of the
 --- section the string goes in; colours sit on its background and it is restored after them.
@@ -45,7 +63,7 @@ function M.render(next_value, opts)
   local function hl(name, hex, bold)
     return '%#' .. group(name, hex, host, bold) .. '#'
   end
-  local buf = api.nvim_get_current_buf()
+  local buf = target_buf()
   local S = buffer.state[buf]
   if not S then return '' end
   local set = sets.by_name[sets.current]
