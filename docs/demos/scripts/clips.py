@@ -157,7 +157,8 @@ def _(c):
 @clip('same-span', 'The same word twice: the second label is added, not swapped', file=FRESH, cursor=(5, 13))
 def _(c):
     c.step('3ghiw', 'label 3 on "places"')
-    c.step('5ghiw', 'label 5 on exactly the same word: now it has both')
+    c.step('5ghiw', 'label 5 on exactly the same word: earmark asks what you mean', hold=2.5)
+    c.step('a', 'a adds 5 as another label (r would replace 3): now it has both', before=0)
     c.mark_still()
     c.step('5ghiw', 'again with 5: it already has 5, nothing changes')
     c.step('l', 'the hover lists both labels', before=0, hold=3.0)
@@ -362,12 +363,13 @@ def _(c):
     c.step('q', 'q saves and closes', before=0)
 
 
-@clip('hover', 'The hover: rest the cursor on an annotation', file=ESSAY, cursor=(9, 30))
+@clip('hover', 'The hover: rest the cursor on an annotation', file=ESSAY, cursor=(7, 3))
 def _(c):
-    c.step('kk', 'move onto "vague promise"', hold=3.0)
-    c.step('jj', 'it shows the label name, tags and note without taking focus', hold=2.0)
-    c.step('kk', 'and goes away when you leave', hold=3.0)
+    c.step('jj', 'down onto "vague promise": the hover shows its name, tags and note, focus stays here',
+           hold=3.5)
     c.mark_still()
+    c.step('kk', 'move off "vague promise": the hover goes away', hold=2.0)
+    c.step('jj', 'back on: it shows again', hold=3.0)
 
 
 @clip('hover-overlap', 'Overlapping annotations: the hover lists them innermost first', file=ESSAY, cursor=(3, 34))
@@ -376,13 +378,13 @@ def _(c):
     c.mark_still()
 
 
-@clip('hover-toggle', '<leader>mh turns the automatic hover off and on', file=ESSAY, cursor=(9, 30))
+@clip('hover-toggle', '<leader>mh turns the automatic hover off and on', file=ESSAY, cursor=(7, 3))
 def _(c):
     c.step(' mh', 'hover off')
-    c.step('kk', 'nothing shows now', hold=2.5)
+    c.step('jj', 'onto "vague promise": nothing shows now', hold=2.5)
     c.mark_still()
     c.step(' mh', 'on again')
-    c.step('jk', 'it shows', hold=2.5)
+    c.step('kj', 'move off and back: it shows', hold=3.0)
 
 
 @clip('peek', '<leader>mi: show the details float now, and enter it', file=ESSAY, cursor=(11, 3))

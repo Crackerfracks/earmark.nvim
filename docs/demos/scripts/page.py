@@ -60,9 +60,9 @@ card('repeat', 'Repeat with .', FRESH,
      'Each <code>.</code> marks another word with the same label, no prompt.', 'Marking a run of things the same way.')
 card('same-span', 'The same word twice: both labels stay', FRESH,
      [('on "places"', '/places<CR>'), ('label 3', '3ghiw'), ('label 5 on the same word', '5ghiw'),
-      ('label 5 again', '5ghiw'), ('rest on it', 'l')],
-     'The second label is added to the annotation (it shows as an overlap); repeating a label it already has does '
-     'nothing. The hover lists both.',
+      ('add it', 'a'), ('label 5 again', '5ghiw'), ('rest on it', 'l')],
+     'A small question asks whether the new label goes on as another one (a) or replaces the old one (r). Added, '
+     'both labels stay visible; repeating a label it already has does nothing. The hover lists both.',
      'This is the old complaint about overlapping highlights on one word: both labels stay visible.',
      'Default to confirm (item 13): another label on exactly the same span is added, not swapped; '
      '<code>&lt;leader&gt;ml</code> swaps.')
@@ -261,7 +261,7 @@ card('note-split', 'Note in a split: ,s and ,f', ESSAY,
      [('on "approved"', '/approved<CR>'), ('open the note', '<leader>mm'), ('to a split', ',s'), ('back', ',f'), ('close', 'q')],
      'The note moves to a split at the bottom and back to the float.', 'Longer notes get room.')
 card('hover', 'The hover', ESSAY,
-     [('on "vague promise"', '/vague<CR>'), ('move off and back', 'jjkk')],
+     [('on "vague promise"', '/vague<CR>'), ('move off and back', 'kkjj')],
      'Resting on an annotation with a name, note or tags shows a float with the label name (in its colour), tags and '
      'note, without taking focus; it goes away when you leave.', 'See what you wrote without opening anything.',
      'Default to confirm (item 4): the header is the label colour as text (<code>▍ name</code>), not a filled bar. '
@@ -271,7 +271,7 @@ card('hover-overlap', 'Overlaps in the hover', ESSAY,
      '"budget" (label 7) sits inside "approved the annual budget" (label 3): the hover lists both, innermost first (①, ②).',
      'When marks overlap you can still read each one.')
 card('hover-toggle', 'Hover off and on: <leader>mh', ESSAY,
-     [('on "vague promise"', '/vague<CR>'), ('off', '<leader>mh'), ('move', 'jjkk'), ('on', '<leader>mh')],
+     [('on "vague promise"', '/vague<CR>'), ('off', '<leader>mh'), ('move off and back', 'kkjj'), ('on', '<leader>mh')],
      'With the hover off, resting on the annotation shows nothing.', 'Quiet reading when you want it.')
 card('peek', 'Details now: <leader>mi', ESSAY,
      [('on "Revenue"', '/Revenue<CR>'), ('details', '<leader>mi'), ('close', 'q')],
