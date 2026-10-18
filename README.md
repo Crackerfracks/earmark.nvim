@@ -3,6 +3,11 @@
 Highlight and label spans of text in Neovim, and keep those annotations attached to the
 text, even while the text keeps changing.
 
+![3ghiw marks a word with label 3; 12gh$ marks to the end of the line](docs/demos/annotate-count.gif)
+![Overlapping annotations: the hover lists them innermost first](docs/demos/hover-overlap.gif)
+
+Every feature, with clips and the keys to try: [docs/demos/index.html](docs/demos/index.html).
+
 - **Labels come from sets.** The default sets are five generated palettes with keys 1–99,
   and you can define your own.
 - **A count picks the label:** `3ghiw` marks a word with label 3.
