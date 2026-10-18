@@ -1,0 +1,391 @@
+*earmark.txt*  Label spans of text and keep the labels attached as it changes
+
+==============================================================================
+CONTENTS                                                    *earmark-contents*
+
+  1. Introduction ............................... |earmark-intro|
+  2. Quickstart ................................. |earmark-quickstart|
+  3. Keys ....................................... |earmark-keys|
+  4. The label prompt ........................... |earmark-prompt|
+  5. Notes, tags and the hover .................. |earmark-notes|
+  6. Finding and reviewing ...................... |earmark-find|
+  7. What the highlights mean ................... |earmark-looks|
+  8. Commands ................................... |earmark-commands|
+  9. Configuration .............................. |earmark-config|
+ 10. Label sets and set files ................... |earmark-sets|
+ 11. Storage .................................... |earmark-storage|
+ 12. API ........................................ |earmark-api|
+ 13. Events ..................................... |earmark-events|
+ 14. Statusline ................................. |earmark-statusline|
+ 15. Troubleshooting and FAQ .................... |earmark-troubleshooting|
+
+==============================================================================
+1. INTRODUCTION                                                *earmark-intro*
+
+earmark highlights spans of text with labels and keeps those annotations
+attached to the text while it changes: live edits, formatters, |:edit!|,
+edits made outside Neovim, renamed files and undo.
+
+Labels come from sets. The default sets are five generated palettes with
+keys 1-99 ("vivid", "pastel", "earth", "metal", "cyber"); you can define
+your own, in your config or in files (|earmark-sets|).
+
+When annotated text is rewritten the annotation is marked "stale"; when the
+text is deleted it is "detached", never dropped, and comes back if the text
+returns. Annotations are plain JSON inside your project (`<root>/.earmark/`),
+so they travel with the repository or notebook.
+
+Requires Neovim 0.11 or newer.
+
+==============================================================================
+2. QUICKSTART                                             *earmark-quickstart*
+
+1. Install it and call `require('earmark').setup()` (lazy.nvim: `opts = {}`).
+2. Put the cursor on a word and type `3ghiw`. The word gets label 3.
+3. Type `ghip` without a count: a prompt opens beside the paragraph. Type
+   `12`, watch the colour on the text, press <CR>.
+4. Press `<leader>mm` on an annotation and write a note. `q` saves it.
+5. Rest the cursor on it: the hover shows its label, name and note. Press
+   `<leader>mp` to list every annotation in the file.
+
+Run |:checkhealth| earmark if something does not work.
+
+==============================================================================
+3. KEYS                                                         *earmark-keys*
+
+Every key below is a default; set any entry of `keys` to false to drop it,
+or `keys = false` to drop them all. Each action also has a <Plug> mapping
+named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
+`<Plug>(earmark-next-same)`.
+
+`{count}gh{motion}`  Annotate the motion with label {count} of the current
+                   set (`3ghiw`, `12gh$`). Without a count the label prompt
+                   opens (|earmark-prompt|). `.` repeats with the same label.
+                                                          *earmark-operator*
+`{Visual}{count}gh`  Annotate the selection. A blockwise selection makes one
+                   annotation per line.
+`{count}ghh`         Annotate the line.                       *earmark-line*
+`<leader>ml`         Change the label of the annotation under the cursor
+                   ({count} picks among overlapping ones).  *earmark-relabel*
+`<leader>ma`         Add another label to it.               *earmark-add_value*
+`<leader>mr`         Name (or rename) its label for this file; an empty name
+                   clears it.                               *earmark-rename*
+`<leader>mx`         Erase the annotation under the cursor; in Visual mode,
+                   every annotation in the selection.        *earmark-erase*
+`<leader>mX`         Erase every annotation in the buffer.   *earmark-clear*
+`<leader>mu`         Restore the most recently erased.     *earmark-restore*
+`<leader>mn`         Next annotation (wraps; {count} skips).    *earmark-next*
+`<leader>mN`         Previous annotation.                       *earmark-prev*
+`<leader>m]`         Next annotation with the label under the cursor.
+                                                         *earmark-next_same*
+`<leader>m[`         Previous one with that label.         *earmark-prev_same*
+`<leader>mj`         Jump labels on every visible annotation (flash.nvim;
+                   without it, the picker).                   *earmark-jump*
+`<leader>mp`         Pick an annotation in this file.           *earmark-pick*
+`<leader>mP`         Pick an annotation anywhere in the project.
+                                                          *earmark-pick_all*
+`<leader>md`         Review stale, ambiguous and detached annotations.
+                                                            *earmark-review*
+`<leader>mD`         Compare an annotation's original text with its current
+                   text.                                      *earmark-diff*
+`<leader>me`         Export this file's annotations to Markdown.
+                                                            *earmark-export*
+`<leader>mo`         Give every other occurrence of the annotated text the
+                   same labels.                         *earmark-occurrences*
+`<leader>mg{motion}` Move the annotation under the cursor onto the motion
+`{Visual}<leader>mg` (or the selection); its note and labels stay.
+                                                            *earmark-regrow*
+`<leader>mz`         Promote the annotation to a zk note (zk-nvim).
+                                                                *earmark-zk*
+`<leader>ms`         Switch to the next label set; a popup shows its colours.
+                                                         *earmark-cycle_set*
+`<leader>mS`         Choose the label set from a list.      *earmark-pick_set*
+`<leader>mm`         Open or close the note of the annotation under the
+                   cursor ({count} picks among overlaps).     *earmark-note*
+`<leader>mi`         Show the hover now and enter it (scroll; `q` closes).
+                                                              *earmark-peek*
+`<leader>mh`         Automatic hover on or off.        *earmark-toggle_hover*
+`<leader>mt`         Add or remove tags of the annotation.       *earmark-tags*
+`<leader>mv`         End-of-line indicators on or off.
+                                                 *earmark-toggle_indicators*
+
+==============================================================================
+4. THE LABEL PROMPT                                           *earmark-prompt*
+
+`gh` without a count opens a one-line prompt beside the span. The span shows
+the selected colour while you type and the list under the input narrows:
+
+- digits match keys first, then the shades of that family (3 -> 3, 13, 23);
+- anything else matches keys, then label names (fuzzy);
+- empty input offers the last label, then labels already used in this file.
+
+In the prompt:
+  <CR>              apply the selected label
+  <Tab>             apply and name it; <Tab> or <CR> there accepts the name
+  <S-Tab>           back to the label stage
+  <C-n> <C-p>       move through candidates (also <Down> <Up>; Normal j k)
+  <C-s>             try the next label set
+  <Esc>             Normal mode; <Esc> or q again cancels
+
+A label with `choices` asks for a choice next, and a choice listed in
+`text.when` asks for a line of text (|earmark-sets|). Labels whose `requires`
+is not met are listed last, dimmed, with the reason.
+
+The name stage is pre-filled from what you called that label before: in this
+file, elsewhere in the project, then anywhere. `prompt.ask_name` decides when
+you are asked: "first_use" (default), "always" or "never".
+
+==============================================================================
+5. NOTES, TAGS AND THE HOVER                                   *earmark-notes*
+
+`<leader>mm` opens the note, a Markdown buffer in a float under the span (an
+empty note starts in Insert mode). `q`, |:w|, <C-s>, leaving the float or
+closing it saves; `<localleader>s` moves it to a split, `<localleader>f`
+back. Clearing all the text removes the note.
+
+Write `#tags` and `@identifiers` anywhere in a note and earmark picks them
+up (not inside code or headings). `<leader>mt` adds tags without writing
+them in the note, and lists every tag you have used.
+
+The hover appears when the cursor rests on an annotation that has a name,
+a note, tags, more than one label, or a stale or ambiguous status
+(`hover.show_when = 'always'` for every annotation). It stays while you move
+inside the annotation and goes away when you leave, type, scroll or start an
+operator. Overlapping annotations are numbered innermost first.
+
+End-of-line indicators show a pencil per note, the #tags and @identifiers,
+in the label's colour; lines too long for them get them on a virtual line.
+Nothing goes in the sign column.
+
+==============================================================================
+6. FINDING AND REVIEWING                                        *earmark-find*
+
+The pickers use snacks.nvim, then telescope.nvim, else |vim.ui.select()|
+(`picker` forces one). Entries show the label name, text, tags and first
+line of the note.                                         *earmark-query*
+Query words for `:Earmark pick`, `:Earmark pick_all` and `:Earmark qf`:
+
+  #tag  @ident  label:<key or name>  set:<name>
+  status:<ok, stale, ambiguous or detached>  has:note  has:tags
+  anything else matches the text, the name or the note
+
+The review list (`<leader>md`) offers, for each annotation that needs
+attention: jump, compare, accept the current text, move it to a place its
+text could be now (scored candidates), attach it to a selection, or erase.
+
+==============================================================================
+7. WHAT THE HIGHLIGHTS MEAN                                    *earmark-looks*
+
+- Overlapping annotations of different labels: the mix of their colours,
+  underlined in the outer annotation's colour.
+- Nested annotations of the same label: underlined in the text colour,
+  double underline three levels deep.
+- A second label: an undercurl in its colour. Labels 3 and up: small
+  squares after the span.
+- Stale: underdashed. Ambiguous: underdotted.
+
+`overlap = { style = 'top' }` turns mixing off: the smallest span is on top.
+
+==============================================================================
+8. COMMANDS                                                 *earmark-commands*
+
+                                                                    *:Earmark*
+:Earmark [subcommand] [args]
+    Without a subcommand, `info`. Every key action is also a subcommand.
+
+    info               print the annotations under the cursor
+    peek note tags toggle_hover toggle_indicators
+    erase clear restore next prev next_same prev_same jump
+    relabel add_value rename cycle_set pick_set
+    review diff export occurrences zk
+                       the same as the keys in |earmark-keys|
+    pick [query]       pick in this file (|earmark-query|)
+    pick_all [query]   pick in the project
+    qf [all] [query]   annotations into the quickfix list; `all`: project
+    :'<,'>Earmark reanchor
+                       attach the annotation being reviewed to the
+                       selection
+    scratch            reopen a scratch buffer you annotated earlier
+    check              print how each annotation was placed; headless, exit
+                       status 1 when any is detached:
+                         nvim --headless file.md -c 'Earmark check' -c q
+    color {#rrggbb|reset}
+                       recolour the label under the cursor in this file
+    set [name]         switch to a label set (no name: the next one)
+    reload             re-read label sets and this file's annotations
+    log                recent warnings and errors (also in
+                       `<storage_dir>/earmark.log`)
+
+==============================================================================
+9. CONFIGURATION                                              *earmark-config*
+
+`require('earmark').setup(opts)` with any of these (defaults shown):
+>lua
+  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  sets_dir = nil,          -- default ~/.config/earmark/sets; false to skip
+  default_label = nil,     -- offered first, e.g. 'vivid/3' or 'review/q1'
+  current = nil,           -- set a count resolves against (default: first)
+  root_markers = { '.earmark', '.zk', '.git' },
+  storage_dir = vim.fn.stdpath('data') .. '/earmark',
+  stale_threshold = 0.6,   -- similarity below which an annotation is stale
+  context = 32,            -- bytes of surrounding text kept on each side
+  keys = { ... },          -- |earmark-keys|; false disables all
+  prompt = { width = 44, max_rows = 8, ask_name = 'first_use' },
+  ui = { border = 'rounded' },
+  note = { layout = 'float', width = 0.6, max_width = 100,
+           height = { min = 5, max = 0.5 }, winblend = 0 },
+  hover = { auto = true, delay = 120, show_when = 'named_or_note',
+            max_width = 0.5, max_height = 0.5 },
+  indicators = { mode = 'eol', max_pencils = 3, identifiers = true,
+                 show_empty = false },
+  overlap = { style = 'blend' },   -- or 'top'
+  export = { group_by = 'label', include_detached = true, format = nil },
+  zk = { dir = nil, open = true },
+  statusline = { digits = true },
+  picker = 'auto',         -- 'snacks' | 'telescope' | 'select'
+  ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },
+  debounce_ms = 200,
+<
+`export.group_by` is 'label', 'position', 'tag' or 'time'; `export.format`
+is a function `(list, ctx) -> lines` that writes the body yourself.
+
+==============================================================================
+10. LABEL SETS AND SET FILES                                    *earmark-sets*
+
+Strings in `sets` are generated numbered palettes. Named tables are your own:
+>lua
+  sets = {
+    'vivid',
+    feedback = { labels = {
+      { key = 'c', name = 'contradiction', color = '#e06c75' },
+      { key = 'v', name = 'vague' },     -- colour picked for you
+      'cut this',                         -- key = its position, 3
+    } },
+    mine = { generate = 'numbered',
+             palette = { L = 0.7, C = 0.15, h0 = 200, zig = 0.04 } },
+  }
+<
+A count resolves to the label whose key is that number, else the label at
+that position.
+
+Sets can live in files, one per file, named after the file:
+`~/.config/earmark/sets/*.lua` or `*.json` (yours) and `<root>/.earmark/sets/`
+(the project's; replaces a same-named set). Files are re-read when saved in
+Neovim or when you come back after editing them elsewhere. Project Lua files
+run only once trusted (|:trust|); JSON never runs code.
+
+Labels for rubrics and forms:
+>lua
+  return { labels = {
+    { key = 'q1', name = 'Accuracy', color = '#e06c75',
+      choices = { { key = 'a', name = 'Correct' },
+                  { key = 'b', name = 'Minor issue', color = '#e5c07b' },
+                  'Major issue' },
+      text = { when = { 'b', 'c' }, prompt = 'What is wrong?' } },
+    { key = 'q1.1', name = 'Severity reason',
+      requires = { q1 = { 'b', 'c' } } },
+  } }
+<
+==============================================================================
+11. STORAGE                                                  *earmark-storage*
+
+- A file inside a project: `<root>/.earmark/docs/<relative path>.json`,
+  where <root> is the nearest directory with one of `root_markers`.
+- Other files: `<storage_dir>/files/<absolute path>.json`.
+- Scratch and unnamed buffers: `<storage_dir>/scratch/<id>.json`.
+
+A record (schema version 2) holds the annotations, their notes and tags,
+label names for that document, and a fingerprint of the text. The text itself
+is a sibling snapshot under `snap/`, gitignored inside projects. Writes are
+atomic; a record that cannot be parsed is never overwritten. Version 1
+records are read and rewritten as version 2 on the next save.
+
+Re-finding text, in order: the diff of the snapshot against the current
+text; the exact text with the most similar surroundings; the closest fuzzy
+match. When two places fit equally well the annotation is "ambiguous" and
+the review list offers the candidates.
+
+==============================================================================
+12. API                                                          *earmark-api*
+
+Positions are 0-based `{ row, col }` byte columns, spans end-exclusive; buf 0
+is the current buffer. A value is
+`{ set = 'vivid', label = '3', choice = 'b'?, text = '...'? }`.
+
+earmark.annotate({buf}, {s}, {e}, {value})              *earmark.annotate()*
+    Add an annotation; returns it.
+earmark.list({buf})                                         *earmark.list()*
+    `{ { annotation, s, e }, ... }` in order; s and e are nil when detached.
+earmark.at({buf}, {pos})                                      *earmark.at()*
+    Annotations at {pos} (default: cursor), innermost first.
+earmark.get({buf}, {id})                                     *earmark.get()*
+earmark.set_note({buf}, {id}, {text})                   *earmark.set_note()*
+    nil or '' clears the note.
+earmark.set_tags({buf}, {id}, {tags})                   *earmark.set_tags()*
+earmark.set_values({buf}, {id}, {values})             *earmark.set_values()*
+earmark.erase({buf}, {ids})                                *earmark.erase()*
+earmark.restore({buf})                                   *earmark.restore()*
+    Restore the last erased batch.
+earmark.rename_label({buf}, {value}, {name})        *earmark.rename_label()*
+earmark.names({buf})                                       *earmark.names()*
+    `{ ['vivid/3'] = 'Vague' }`
+earmark.export({buf}, {opts})                             *earmark.export()*
+    Markdown lines (opts as in `export`).
+earmark.pick({opts})                                        *earmark.pick()*
+    `{ scope = 'file'|'project', query = '#todo' }`
+earmark.hover.show() earmark.hover.hide()                 *earmark.hover*
+earmark.statusline()                                  *earmark.statusline()*
+earmark.on({event}, {fn})                                     *earmark.on()*
+    Run `fn(data)` on an event (|earmark-events|): 'Note' or 'EarmarkNote'.
+    Returns the autocmd id.
+
+Anything not listed here is internal and may change.
+
+==============================================================================
+13. EVENTS                                                    *earmark-events*
+
+|User| autocmds with `data = { buf, action, ids }`:
+`EarmarkChanged` for every change, and one of `EarmarkAdd`, `EarmarkUpdate`,
+`EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`, `EarmarkNote`,
+`EarmarkLoad`.
+>lua
+  require('earmark').on('Note', function(d) print(d.buf, vim.inspect(d.ids)) end)
+<
+==============================================================================
+14. STATUSLINE                                            *earmark-statusline*
+
+`require('earmark').statusline()` returns a statusline string, empty in
+buffers earmark does not track: a swatch and the label the next `gh` uses,
+the number of annotations and notes, a warning count for detached and
+ambiguous ones, and for numbered sets the digits 1234567890 in their colours.
+>lua
+  -- lualine
+  sections = { lualine_x = { function() return require('earmark').statusline() end } }
+<
+==============================================================================
+15. TROUBLESHOOTING AND FAQ                          *earmark-troubleshooting*
+
+|:checkhealth| earmark checks the Neovim version, that the storage directory
+is writable, the project root for the current directory, every record in it,
+set files that failed to load, and which optional plugins were found.
+
+`:Earmark log` lists recent warnings and errors.
+
+Nothing happens on `gh` ~
+  `gh` is Select mode in stock Neovim; earmark takes it over. Check
+  `:verbose nmap gh` for another plugin's mapping.
+
+`ghh` waits before annotating ~
+  `gh` is also an operator, so Neovim waits 'timeoutlen' to see whether `h`
+  is the motion or the start of `ghh`. Press `ghh` quickly, or map `line`
+  to something else.
+
+The highlights vanished after a formatter ran ~
+  They should be re-placed on the next change. Run `:Earmark check` to see
+  where each one landed and `<leader>md` for the ones that need review.
+
+A record won't save ~
+  A record that can't be parsed is left untouched and saving for that
+  buffer stops with a warning. Fix or move the file, then `:Earmark reload`.
+
+ vim:tw=78:ts=8:ft=help:norl:

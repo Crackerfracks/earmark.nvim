@@ -16,16 +16,40 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: feature-complete for the 2026-10 rebuild plan; docs and polish next.
-See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
-
-Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
+Requires Neovim 0.11+. Full reference: `:help earmark`. Something off? `:checkhealth earmark`.
 
 ## Install (lazy.nvim)
 
 ```lua
-{ 'you/earmark.nvim', opts = {} }
+{ 'Crackerfracks/earmark.nvim', opts = {} }
 ```
+
+From a local checkout (how Stephen's config should load it while it's private):
+
+```lua
+{
+  dir = '~/Projects/earmark.nvim',
+  name = 'earmark.nvim',
+  lazy = false, -- it must see the buffers Neovim starts with, and own `gh` from the start
+  opts = {
+    -- default_label = 'vivid/3',
+    -- prompt = { ask_name = 'always' },
+  },
+}
+```
+
+## Quickstart (60 seconds)
+
+1. Put the cursor on a word and type `3ghiw`. The word gets label 3 of the current set.
+2. Type `ghip` without a count: a prompt opens beside the paragraph. Type `12`, watch the
+   colour change on the text, press `<CR>`.
+3. Press `<leader>mm` on an annotation and write a note with a `#tag` in it. `q` saves.
+4. Rest the cursor on it: the hover shows the label, its name, the tag and the note.
+5. `<leader>mp` lists every annotation in the file; `<leader>md` lists the ones whose text
+   changed or disappeared.
+
+`make demo` writes a small annotated project to `/tmp/earmark-demo` and prints the command
+that opens it with this checkout, if you want to look before touching your config.
 
 ## Use
 
@@ -374,7 +398,65 @@ link back to the line. The note is titled after the note's first line (else the 
 created in the project's notebook (`zk.dir` picks a subdirectory) and opened in a split
 (`zk.open = false` to stay). The annotation keeps its note; the hover shows `↗ zk`.
 
+## FAQ
+
+**Doesn't `gh` start Select mode?** In stock Neovim, yes. earmark takes it over because Select
+mode is rarely used and `gh` reads as "highlight". Set `keys.operator` (and `keys.line`) to
+something else if you use Select mode.
+
+**Why does `ghh` sometimes wait before marking the line?** `gh` is an operator, so after
+`ghh` Neovim can't yet tell whether `h` was the motion or the start of a longer mapping and
+waits `'timeoutlen'`. Type it quickly, or map `line` to another key.
+
+**Will a formatter or `git checkout` lose my annotations?** No. Each record keeps a snapshot of
+the text it was made against and re-finds every annotation from it (then by quote and
+context, then fuzzily). Anything it can't place with confidence is marked stale, ambiguous or
+detached and shows up in `<leader>md`; nothing is dropped. `:Earmark check` shows where each
+one landed.
+
+**Should I commit `.earmark/`?** That's the idea: records and label names are small JSON and
+diff well. The text snapshots (`.earmark/snap/`) and exports are gitignored automatically.
+
+**Neovim 0.12?** Supported. earmark uses `vim.text.diff` where it exists and avoids APIs
+deprecated in 0.12.
+
+**Numbers for labels are hard to remember.** Name them: `<Tab>` in the prompt, or
+`<leader>mr`. Names are per file and remembered for the project, and the prompt matches
+names as you type.
+
 ## Develop
 
 `make test` runs the mini.test suite headless. It uses your lazy.nvim copy of mini.nvim if
-present, otherwise clones it into `deps/`.
+present, otherwise clones it into `deps/`. `make deps` also fetches flash.nvim so the jump
+test runs instead of being skipped. `make demo` builds the demo project described above. The
+docs test checks that every default key and subcommand is in this README and in
+`doc/earmark.txt`, and that the help file's tags are valid.
+
+## Status (2026-10-19)
+
+The 2026-10 rebuild plan is done: milestones M0 to M10 landed as stacked draft PRs (#1 to
+#11), each with its tests (160 in total, all passing). The plan is in `docs/PLAN.md`.
+
+Defaults that were decided overnight and are worth a second look:
+
+1. Naming: the prompt asks for a name the first time a label is used in a file
+   (`prompt.ask_name = 'first_use'`); `'always'` makes it ask every time.
+2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line (`@A`
+   in the hover, where Markdown would hide brackets).
+3. Overlaps: mixed colours with the outer colour as underline; a second label is an
+   undercurl, labels 3 and up are small squares after the span (not a gradient or
+   interleave).
+4. The hover header is the label colour as text (`▍ name`), not a filled bar.
+5. The indicator toggle has two states (on / off); hiding identifiers is config only.
+6. No per-background palettes.
+7. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
+8. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
+9. What the statusline shows: the next label, counts, the warning count and the digit row.
+10. Storage is JSON only; SQLite and encryption are dropped.
+11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default.
+12. `.earmark/names.json` (label names for the project) is committed, not ignored.
+
+Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (one typo) stays
+"ok" rather than "stale"; `<leader>mg` accepts the new text as the annotation's text;
+`<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`); set files are reloaded by checking their
+modification time on focus and buffer switches.
