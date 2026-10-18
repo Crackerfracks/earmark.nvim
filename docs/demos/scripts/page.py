@@ -291,6 +291,15 @@ card('hover-toggle', 'Hover off and on: <leader>mh', ESSAY,
 card('peek', 'Details now: <leader>mi', ESSAY,
      [('on "Revenue"', '/Revenue<CR>'), ('details', '<leader>mi'), ('close', 'q')],
      'The details float opens at once and the cursor goes inside it to scroll or copy.', 'Long notes.')
+card('zk', 'A zk note: <leader>mz', ESSAY,
+     [('on "vague promise"', '/vague<CR>'), ('make the note', '<leader>mz'), ('back', '<C-w>p'),
+      ('again', '<leader>mz'), ('in the note', '<leader>mz')],
+     'The note gets the label as a tag, the quote, your note and a <code>[source]</code> link to the line, so '
+     '<code>zk list --link-to</code> and zk\'s backlinks find it. Pressing the key again opens the same note; inside '
+     'the note it lists the annotations linked to it.',
+     'Turn a mark in a sourcebook into a note you can link from your own notes (and later the DM dashboard).',
+     'Needs the <code>zk</code> command (Arch: <code>sudo pacman -S zk</code>) and a notebook (<code>zk init</code>); '
+     'the demo sets <code>zk = { dir = \'zk\' }</code>.')
 card('tags', 'Tags: <leader>mt', ESSAY,
      [('on "vague promise"', '/vague<CR>'), ('tags', '<leader>mt'), ('toggle todo', 'todo<CR>'), ('done', '<Esc>'),
       ('show tags', '<leader>mv')],
