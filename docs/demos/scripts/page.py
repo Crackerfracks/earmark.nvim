@@ -376,6 +376,8 @@ def main():
     skipped = ''.join('<li><b>%s</b>: %s</li>' % s for s in SKIPPED)
     page = (TEMPLATE.replace('{toc}', '\n'.join(toc)).replace('{body}', '\n'.join(body))
             .replace('{skipped}', skipped).replace('{n}', str(n)))
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tray.js')) as fh:
+        page = page.replace('{tray_js}', fh.read())
     with open(os.path.join(OUT, 'index.html'), 'w') as fh:
         fh.write(page)
     print('wrote %s (%d cards)' % (os.path.join(OUT, 'index.html'), n))
@@ -410,7 +412,25 @@ code { background: #292e42; padding: 0 4px; border-radius: 3px; font-size: .92em
 .intro { background: var(--card); border-radius: 10px; padding: 12px 16px; }
 .missing { color: #f7768e; }
 .cbtn { float: right; font: 600 .8em system-ui, sans-serif; color: var(--bg); background: var(--accent); border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.cbtn:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.cbtn:focus-visible, .tray button:focus-visible, .cbox button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.cbox { margin: .6em 0; }
+.cbox textarea { width: 100%; min-height: 5.5em; background: #16161e; color: var(--fg); border: 1px solid #3b4261; border-radius: 6px; padding: 8px; font: 15px/1.45 system-ui, sans-serif; resize: vertical; }
+.cbox .row, .tray .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.cbox .hint, .tray .hint { color: var(--dim); font-size: .8em; }
+.btn { font: 600 .85em system-ui, sans-serif; border: 1px solid #3b4261; background: #292e42; color: var(--fg); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: default; }
+.tray { position: fixed; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px)); background: var(--card); border: 1px solid #3b4261; border-radius: 10px; box-shadow: 0 8px 28px #0009; z-index: 20; font-size: .92em; }
+.tray header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; cursor: pointer; }
+.tray header b { color: var(--accent); }
+.tray .body { padding: 0 12px 12px; }
+.tray ol { margin: 0; padding-left: 1.4em; max-height: 45vh; overflow: auto; }
+.tray li { margin: .4em 0; }
+.tray li .t { font-weight: 600; } .tray li .x { white-space: pre-wrap; word-break: break-word; }
+.tray li .acts { font-size: .8em; } .tray li .acts a { margin-right: 10px; cursor: pointer; }
+.tray .status { color: var(--dim); font-size: .85em; margin-top: 6px; } .tray .status.ok { color: var(--ok); } .tray .status.err { color: #f7768e; }
+.tray.flash { animation: flash .6s; } @keyframes flash { 50% { box-shadow: 0 0 0 3px var(--accent); } }
+main { padding-bottom: 120px; }
 @media (max-width: 600px) { body { font-size: 16px; } main { padding: 10px; } article { padding: 10px; } }
 </style>
 </head>
@@ -437,9 +457,11 @@ you are asked to confirm:</p>
 <code>:e notes/fresh.md</code> and <code>:e notes/changed.md</code>). It is the same project the clips were recorded
 in, with the same theme; nothing from your own config is loaded. Run <code>make demo</code> again to reset it.</p>
 </div>
-<p class="commenting" hidden><b>Comments.</b> Every card has a <b>Comment</b> button (or click anywhere on a card in comment mode).
-Type what you think, about a default, a bug, the clip itself, and press <b>Send to Claude</b> to put it straight into
-the working session's prompt; a plain comment stays on the page for later.</p>
+<p class="commenting" hidden><b>Comments.</b> Every card has a <b>Comment</b> button. Type what you think (about a default,
+a bug, the clip itself) and press <b>Add</b> or <kbd>Ctrl+Enter</kbd>: the comment waits in the <b>tray</b> at the bottom
+right, kept in this browser, where you can edit or remove it. When you are done, <b>Send all to Claude</b> sends every
+comment in the tray as one message to the working session. (The page's own comment mode, outside these buttons, still
+sends each comment straight away.)</p>
 <p class="lede">{n} demonstrations, in the order of the README:</p>
 <ul class="toc">
 {toc}
@@ -451,19 +473,7 @@ the working session's prompt; a plain comment stays on the page for later.</p>
 ffmpeg), then <code>python3 docs/demos/scripts/page.py</code>.</p>
 </main>
 <script>
-(async () => {
-  const c = window.claude && await window.claude.use("comments");
-  if (!c) return;
-  document.querySelectorAll('.commenting').forEach(p => p.hidden = false);
-  document.querySelectorAll('article .cbtn').forEach(b => {
-    b.hidden = false;
-    b.addEventListener('click', async () => {
-      try { await c.openComposer({ element: b.closest('article') }); }
-      catch (e) { if (e && (e.code === 'unavailable' || e.code === 'not_granted')) document.querySelectorAll('.cbtn').forEach(x => x.hidden = true); }
-    });
-  });
-})();
-</script>
+{tray_js}</script>
 </body>
 </html>
 '''
