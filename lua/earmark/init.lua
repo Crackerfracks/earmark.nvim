@@ -899,7 +899,7 @@ local function setup_autocmds()
   au('BufReadPost', function(ev)
     sync_sets(ev.buf)
     if buffer.state[ev.buf] then
-      buffer.on_change(ev.buf) -- :e! / external reload: repair from the in-memory snapshot
+      buffer.reloaded(ev.buf) -- external reload: place again from the in-memory snapshot
     else
       buffer.get(ev.buf)
     end
@@ -921,7 +921,15 @@ local function setup_autocmds()
     t:stop()
     t:start(config.options.debounce_ms, 0, vim.schedule_wrap(function()
       log.guard('on_change', buffer.on_change, ev.buf)
+      -- counts and statuses changed after the edit was drawn: show them in statuslines now
+      pcall(vim.cmd, 'redrawstatus!')
     end))
+  end)
+  au('InsertEnter', function(ev)
+    buffer.insert_entered(ev.buf)
+  end)
+  au('InsertLeave', function(ev)
+    buffer.insert_left(ev.buf)
   end)
   au({ 'BufUnload' }, function(ev)
     if buffer.state[ev.buf] then

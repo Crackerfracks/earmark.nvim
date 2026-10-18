@@ -70,6 +70,15 @@ T['digits list the other shades of the family'] = function()
   eq(keys, { '3', '13', '23', '33', '43', '53', '63', '73' })
 end
 
+T['typing after <C-n>/<C-p> still narrows the list'] = function()
+  h.open()
+  h.cursor(1, 10)
+  child.type_keys('ghiw', '1', '<C-n>', '<C-n>', '<C-p>', '<C-p>', '2')
+  eq(prompt_lines()[2]:match('■ (%d+)'), '12')
+  child.type_keys('<CR>')
+  eq(h.texts(), { { text = 'brown', label = '12', status = 'ok' } })
+end
+
 T['<Esc><Esc> cancels and removes the preview'] = function()
   h.open()
   h.cursor(1, 10)

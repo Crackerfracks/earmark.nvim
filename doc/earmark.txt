@@ -30,9 +30,10 @@ Labels come from sets. The default sets are five generated palettes with
 keys 1-99 ("vivid", "pastel", "earth", "metal", "cyber"); you can define
 your own, in your config or in files (|earmark-sets|).
 
-When annotated text is rewritten the annotation is marked "stale"; when the
-text is deleted it is "detached", never dropped, and comes back if the text
-returns. Annotations are plain JSON inside your project (`<root>/.earmark/`),
+Changing an annotation's first or last words (`cw`, `ciw`, `s`, `C` ...)
+keeps the new words in it, even when you change all of it. When annotated
+text is rewritten the annotation is marked "stale"; when the text is deleted
+it is "detached", never dropped, and comes back if the text returns. Annotations are plain JSON inside your project (`<root>/.earmark/`),
 so they travel with the repository or notebook.
 
 Requires Neovim 0.11 or newer.
@@ -327,9 +328,11 @@ is the current buffer. A value is
 earmark.annotate({buf}, {s}, {e}, {value})              *earmark.annotate()*
     Add an annotation; returns it.
 earmark.list({buf})                                         *earmark.list()*
-    `{ { annotation, s, e }, ... }` in order; s and e are nil when detached.
+    `{ { annotation = a, s = {row, col}, e = {row, col} }, ... }` in order;
+    s and e are nil when detached.
 earmark.at({buf}, {pos})                                      *earmark.at()*
-    Annotations at {pos} (default: cursor), innermost first.
+    Annotations at {pos} (default: cursor), innermost first, in the same
+    shape as |earmark.list()|.
 earmark.get({buf}, {id})                                     *earmark.get()*
 earmark.set_note({buf}, {id}, {text})                   *earmark.set_note()*
     nil or '' clears the note.
