@@ -68,7 +68,8 @@ function M.content(buf, hits)
       local g = hex and sets.fg_group(hex, true) or 'EarmarkUnknown'
       if k > 1 then parts[#parts + 1] = { '  + ' } end
       parts[#parts + 1] = { (nerd() and '▍' or '|') .. buffer.display_name(buf, v), g }
-      parts[#parts + 1] = { '  ' .. v.set .. '·' .. v.label, 'Comment' }
+      local cname = sets.color_name(v, S and S.colors)
+      parts[#parts + 1] = { '  ' .. v.set .. '·' .. v.label .. (cname and (' · ' .. cname) or ''), 'Comment' }
     end
     local hex1 = sets.color(a.values[1], S and S.colors)
     local fg1 = hex1 and sets.fg_group(hex1) or 'Normal'

@@ -86,7 +86,7 @@ T['a label with choices asks for one; the choice is stored and named'] = functio
   use_wf()
   h.cursor(1, 4)
   child.type_keys('ghiw', 'q1', '<CR>')
-  eq(prompt_rows(), { '▸ ■ a  Correct', '■ b  Minor issue', '■ c  Major issue' })
+  eq(prompt_rows(), { '▸ ██ a  Correct', '██ b  Minor issue', '██ c  Major issue' })
   child.type_keys('a', '<CR>') -- "a": no text asked for
   h.settle()
   local id = child.lua_get('require("earmark").list(0)[1].annotation.id')

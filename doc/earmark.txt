@@ -102,6 +102,11 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
                                                             *earmark-regrow*
 `<leader>mz`         Promote the annotation to a zk note (zk-nvim).
                                                                 *earmark-zk*
+`<leader>mc`         The palette: every label of the set as a big colour patch,
+                   with your name for it, its colour name, hex and uses here.
+                   <CR> makes it the label `gh` offers first; digits jump to
+                   a key; r names it; <Tab> <S-Tab> switch sets.
+                                                           *earmark-palette*
 `<leader>ms`         Switch to the next label set; a popup shows its colours.
                                                          *earmark-cycle_set*
 `<leader>mS`         Choose the label set from a list.      *earmark-pick_set*
@@ -123,6 +128,10 @@ the selected colour while you type and the list under the input narrows:
 - digits match keys first, then the shades of that family (3 -> 3, 13, 23);
 - anything else matches keys, then label names (fuzzy);
 - empty input offers the last label, then labels already used in this file.
+
+Each row shows the colour, the key, your name for the label and the colour's
+name. With a count (3gh) there is no prompt; a hint under the cursor shows
+which label the count picked while you type the motion (`prompt.count_hint`).
 
 In the prompt:
   <CR>              apply the selected label
@@ -146,6 +155,14 @@ you are asked: "first_use" (default), "always" or "never".
 
 Annotating exactly the same span again with another label adds that label to
 it (both show); `<leader>ml` changes the label instead.
+
+                                                       *earmark-color-names*
+Colour names: every colour is named after the nearest of about 700 names from
+the xkcd colour survey (public domain), by distance in OKLab. Labels of one
+set get distinct names. They show in the prompt, the palette, the hover and,
+for a label you haven't named, the statusline. `color_names = false` hides
+them; `color_names = function(hex) return name end` supplies your own (nil
+falls back); a set's label may carry `color_name = '...'`.
 
 ==============================================================================
 5. NOTES, TAGS AND THE HOVER                                   *earmark-notes*
@@ -209,7 +226,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
     info               print the annotations under the cursor
     peek note tags toggle_hover toggle_indicators
     erase clear restore next prev next_same prev_same jump
-    relabel add_value rename cycle_set pick_set
+    relabel add_value rename cycle_set pick_set palette
     review diff export occurrences zk
                        the same as the keys in |earmark-keys|
     pick [query]       pick in this file (|earmark-query|)
@@ -243,7 +260,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
   stale_threshold = 0.6,   -- similarity below which an annotation is stale
   context = 32,            -- bytes of surrounding text kept on each side
   keys = { ... },          -- |earmark-keys|; false disables all
-  prompt = { width = 44, max_rows = 8, ask_name = 'first_use' },
+  prompt = { width = 44, max_rows = 8, ask_name = 'first_use',
+             count_hint = true },
   ui = { border = 'rounded' },
   note = { layout = 'float', width = 0.6, max_width = 100,
            height = { min = 5, max = 0.5 }, winblend = 0 },
@@ -254,7 +272,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
   overlap = { style = 'blend' },   -- or 'top'
   export = { group_by = 'label', include_detached = true, format = nil },
   zk = { dir = nil, open = true },
-  statusline = { digits = true },
+  statusline = { digits = true, color_name = true },
+  color_names = true,      -- false, or function(hex) -> name|nil
   picker = 'auto',         -- 'snacks' | 'telescope' | 'select'
   ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },
   debounce_ms = 200,

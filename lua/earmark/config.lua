@@ -54,6 +54,7 @@ M.defaults = {
     relabel = '<leader>ml', -- change the label of the annotation under the cursor
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
+    palette = '<leader>mc', -- the set's colours as big labelled patches; <CR> picks one
   },
   -- The label prompt (`gh` without a count).
   prompt = {
@@ -62,6 +63,8 @@ M.defaults = {
     -- Ask for a name after choosing a label: 'first_use' (a numbered label with no name in
     -- this file, the project or your history), 'always', or 'never'.
     ask_name = 'first_use',
+    -- After a count (3gh), show which label it picked while you choose the motion.
+    count_hint = true,
   },
   ui = {
     border = 'rounded', -- any 'winborder' value
@@ -110,7 +113,11 @@ M.defaults = {
   },
   statusline = {
     digits = true, -- numbered sets: show 1234567890 in the set's colours
+    color_name = true, -- the next label's colour name, while you haven't named the label
   },
+  -- Colour names ("Tangerine") shown with labels: the nearest of ~700 names from the xkcd
+  -- colour survey. false hides them; a function(hex) -> name|nil supplies your own.
+  color_names = true,
   -- 'auto' (snacks, then telescope, then vim.ui.select), 'snacks', 'telescope' or 'select'
   picker = 'auto',
   -- Buffers with these 'buftype's are never annotated.
