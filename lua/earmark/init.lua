@@ -382,6 +382,32 @@ function M.reanchor(_, range)
   require('earmark.ui.review').reanchor_to_selection(0, { s[2] - 1, s[3] - 1 }, { e[2] - 1, ec })
 end
 
+--- `:Earmark check`: one line per annotation (status, placement score, how it was placed,
+--- text). Headless (scripts, CI), it exits with status 1 when any annotation is detached.
+function M.check()
+  local buf = api.nvim_get_current_buf()
+  local S = buffer.get(buf)
+  if not S then return notify('this buffer cannot be annotated') end
+  local lines, detached = {}, 0
+  for _, x in ipairs(buffer.list(buf)) do
+    local a = x.annotation
+    if a.status == 'detached' then detached = detached + 1 end
+    local q = (a.quote or ''):gsub('\n', '⏎')
+    if vim.fn.strchars(q) > 50 then q = vim.fn.strcharpart(q, 0, 49) .. '…' end
+    lines[#lines + 1] = ('%-9s %4s  %-9s %s  "%s"'):format(
+      a.status, a.score and (math.floor(a.score * 100 + 0.5) .. '%') or '100%', a.how or 'exact',
+      x.s and ('%d:%d'):format(x.s[1] + 1, x.s[2] + 1) or '-', q)
+  end
+  if #lines == 0 then lines[1] = 'no annotations' end
+  if #api.nvim_list_uis() == 0 then
+    io.stdout:write(table.concat(lines, '\n') .. '\n')
+    if detached > 0 then vim.cmd('cquit 1') end
+  else
+    api.nvim_echo({ { table.concat(lines, '\n') } }, true, {})
+  end
+  return lines
+end
+
 --- `:Earmark qf [all] [query]`: annotations into the quickfix list.
 function M.qf(args)
   args = args or {}
@@ -548,6 +574,7 @@ local function register_actions()
   A({ name = 'reanchor', desc = 'attach an annotation to the selection', cmd = M.reanchor })
   A({ name = 'qf', desc = 'annotations to quickfix', cmd = M.qf, complete = function() return { 'all' } end })
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
+  A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
   A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
   A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })

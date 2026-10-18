@@ -174,7 +174,11 @@ end
 local function set_placement(a, r)
   a.how = (r.how and r.how ~= 'same' and r.how ~= 'mapped') and r.how or nil
   a.score = (r.score and r.score < 1) and r.score or nil
-  if r.ambiguous then a.status = 'ambiguous' end
+  if r.ambiguous then
+    a.status = 'ambiguous'
+  elseif a.status == 'ambiguous' then
+    a.status = 'ok'
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -199,7 +203,9 @@ function M.refresh_snapshot(buf, S)
           a.status = status_for(a, text)
           a.updated = now()
         end
-        a.prefix, a.suffix = anchor.context(t, s, e, ctx)
+        -- keep the context as long as it was made (longer where the quote isn't unique)
+        local n = math.min(anchor.MAX_CONTEXT + 16, math.max(ctx, #(a.prefix or ''), #(a.suffix or '')))
+        a.prefix, a.suffix = anchor.context(t, s, e, n)
         a.s, a.e = s, e
       end
     end
@@ -498,7 +504,7 @@ function M.add(buf, s, e, value)
   end
   local t = anchor.text(lines_of(buf))
   local text = anchor.span_text(t, s, e)
-  local pre, suf = anchor.context(t, s, e, config.options.context)
+  local pre, suf = anchor.unique_context(t, s, e, config.options.context)
   local t = now()
   local a = {
     id = store.uuid(),

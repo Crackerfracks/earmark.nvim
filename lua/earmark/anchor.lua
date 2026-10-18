@@ -177,19 +177,233 @@ local function best_occurrence(str, item, near)
   return best, best_score
 end
 
+---------------------------------------------------------------------------
+-- Fuzzy search and scored candidates
+---------------------------------------------------------------------------
+
+--- Collapse whitespace runs to one space. Returns the collapsed string and a map from each
+--- of its byte positions (1-based) to the byte position in `s`.
+local function collapse(s, base)
+  local out, map = {}, {}
+  local n, i, len = 0, 1, #s
+  while i <= len do
+    local ws = s:match('^%s+', i)
+    if ws then
+      n = n + 1
+      out[n], map[n] = ' ', base + i
+      i = i + #ws
+    else
+      n = n + 1
+      out[n], map[n] = s:sub(i, i), base + i
+      i = i + 1
+    end
+  end
+  map[n + 1] = base + len + 1
+  return table.concat(out), map
+end
+
+--- Approximate occurrences of `pat` in `str` (Sellers' algorithm with Ukkonen's cut-off):
+--- ends of substrings within `k` edits, each as { s, e, dist } (1-based, inclusive),
+--- keeping the best end of each run of neighbouring matches.
+local function approx(str, pat, k)
+  local m = #pat
+  if m == 0 then return {} end
+  local pb = { pat:byte(1, m) }
+  local col, start = {}, {}
+  for i = 0, m do
+    col[i], start[i] = i, 1
+  end
+  local lact = math.min(k, m) -- deepest row whose value may be <= k
+  local hits = {}
+  for j = 1, #str do
+    local c = str:byte(j)
+    start[0] = j + 1 -- D[0][j] = 0: nothing matched yet, a match starts after j
+    local diag, diag_s = 0, j -- D[0][j-1]
+    for i = 1, lact do
+      local up, up_s = col[i], start[i]
+      local v, vs = diag + (pb[i] == c and 0 or 1), diag_s
+      if col[i - 1] + 1 < v then v, vs = col[i - 1] + 1, start[i - 1] end
+      if up + 1 < v then v, vs = up + 1, up_s end
+      diag, diag_s = up, up_s
+      col[i], start[i] = v, vs
+    end
+    if lact < m then
+      -- one more row can come within k through the diagonal (its previous value was above k)
+      local i = lact + 1
+      local v, vs = diag + (pb[i] == c and 0 or 1), diag_s
+      if col[i - 1] + 1 < v then v, vs = col[i - 1] + 1, start[i - 1] end
+      col[i], start[i] = v, vs
+      lact = i
+    end
+    while lact > 0 and col[lact] > k do
+      lact = lact - 1
+    end
+    if lact == m then
+      local prev = hits[#hits]
+      if prev and prev.last == j - 1 then
+        -- same run of neighbouring ends: keep the closest
+        if col[m] < prev.dist then prev.s, prev.e, prev.dist = start[m], j, col[m] end
+        prev.last = j
+      else
+        hits[#hits + 1] = { s = start[m], e = j, dist = col[m], first = j, last = j }
+      end
+    end
+  end
+  return hits
+end
+M._approx = approx
+
+M.FUZZY_MIN = 0.75 -- similarity a fuzzy match needs
+M.FUZZY_WINDOW = 200 -- lines on each side of the expected place searched first
+
+--- Expand a byte range to whole UTF-8 characters.
+local function char_bounds(str, s, e)
+  while s > 1 and str:byte(s) and str:byte(s) >= 0x80 and str:byte(s) < 0xC0 do
+    s = s - 1
+  end
+  while e < #str and str:byte(e + 1) and str:byte(e + 1) >= 0x80 and str:byte(e + 1) < 0xC0 do
+    e = e + 1
+  end
+  return s, e
+end
+
+--- Fuzzy matches of `item.quote` in text `t`: { { s, e, sim } ... } as 0-based offsets
+--- (end-exclusive), best first. Whitespace differences are ignored. Searches the lines
+--- around `near` (0-based offset) first, then the whole text when it is small enough.
+function M.fuzzy(t, item, near, opts)
+  opts = opts or {}
+  local quote = item.quote or ''
+  local q = collapse(quote, 0):gsub('^ ', ''):gsub(' $', '')
+  if #q < 4 then return {} end
+  local function search(lo_row, hi_row)
+    local so = t.starts[lo_row + 1] or 0
+    local eo = hi_row + 2 <= #t.starts and t.starts[hi_row + 2] - 1 or #t.str
+    local seg, map = collapse(t.str:sub(so + 1, eo), so)
+    local found = {}
+    -- similarity from the edit distance: 1 - edits / length
+    local function add(s1, e1, dist)
+      local bs, be = char_bounds(t.str, map[s1], map[e1 + 1] - 1)
+      local sim = 1 - dist / math.max(#q, e1 - s1 + 1)
+      if sim >= (opts.min or M.FUZZY_MIN) then found[#found + 1] = { s = bs - 1, e = be, sim = sim } end
+    end
+    if #q <= 256 then
+      local k = math.min(math.floor(#q / 4), 64)
+      local hits = approx(seg, q, k)
+      -- only the closest few are worth scoring
+      table.sort(hits, function(x, y)
+        return x.dist < y.dist
+      end)
+      for i = 1, math.min(#hits, 20) do
+        add(hits[i].s, hits[i].e, hits[i].dist)
+      end
+    else
+      -- long quotes: match the head and the tail and pair them up
+      local head, tail = q:sub(1, 96), q:sub(-96)
+      local heads, tails = approx(seg, head, 24), approx(seg, tail, 24)
+      for _, hh in ipairs(heads) do
+        for _, tt in ipairs(tails) do
+          local len = tt.e - hh.s + 1
+          if len >= #q * 0.75 and len <= #q * 1.25 and #found < 20 then
+            local bs, be = char_bounds(t.str, map[hh.s], map[tt.e + 1] - 1)
+            local sim = M.similarity(collapse(t.str:sub(bs, be), 0), q)
+            if sim >= (opts.min or M.FUZZY_MIN) then found[#found + 1] = { s = bs - 1, e = be, sim = sim } end
+          end
+        end
+      end
+    end
+    return found
+  end
+  local rows = #t.starts
+  local found = {}
+  if near then
+    local r = M.off_to_pos(t, near)
+    found = search(math.max(0, r - M.FUZZY_WINDOW), math.min(rows - 1, r + M.FUZZY_WINDOW))
+  end
+  if #found == 0 and #t.str <= (opts.max_bytes or 2 * 1024 * 1024) then found = search(0, rows - 1) end
+  table.sort(found, function(x, y)
+    return x.sim > y.sim
+  end)
+  return found
+end
+
+--- Up to `n` places where `item` could be now, best first:
+--- { { s, e, score, sim, context, how = 'exact'|'fuzzy' } ... } (0-based offsets).
+--- score = 0.5 * similarity + 0.3 * context + 0.2 * proximity to `near`.
+function M.candidates(t, item, near, n, opts)
+  opts = opts or {}
+  n = n or 3
+  local out = {}
+  local quote = item.quote or ''
+  local function proximity(s)
+    if not near then return 0.5 end
+    return 1 / (1 + math.abs(s - near) / 2000)
+  end
+  local function push(s, e, sim, how)
+    local ctx = context_score(t.str, s, e, item.prefix or '', item.suffix or '')
+    out[#out + 1] = {
+      s = s, e = e, sim = sim, context = ctx, how = how,
+      score = 0.5 * sim + 0.3 * ctx + 0.2 * proximity(s),
+    }
+  end
+  if quote ~= '' then
+    for _, s in ipairs(occurrences(t.str, quote, 200)) do
+      push(s, s + #quote, 1, 'exact')
+    end
+  end
+  if opts.fuzzy ~= false and #out == 0 then
+    for _, f in ipairs(M.fuzzy(t, item, near, opts)) do
+      push(f.s, f.e, f.sim, 'fuzzy')
+    end
+  end
+  table.sort(out, function(x, y)
+    return x.score > y.score
+  end)
+  while #out > n do
+    table.remove(out)
+  end
+  return out
+end
+
+M.AMBIGUOUS_MARGIN = 0.1
+
+--- Whether the best two candidates are too close to tell apart.
+local function ambiguous(cands)
+  return #cands >= 2 and cands[1].score - cands[2].score < M.AMBIGUOUS_MARGIN
+end
+M.is_ambiguous = ambiguous
+
 M.MIN_CONTEXT = 0.5 -- context score needed to trust a relocated quote
 M.MIN_UNIQUE_QUOTE = 12 -- bytes; a unique quote this long is trusted without context
 
+M.FUZZY_MIN_QUOTE = 12 -- bytes; shorter quotes are only ever matched exactly
+
+--- Whether a fuzzy candidate is good enough to place an annotation on its own.
+local function fuzzy_ok(item, c)
+  return #(item.quote or '') >= M.FUZZY_MIN_QUOTE and (c.context >= 0.3 or c.sim >= 0.9)
+end
+
 --- Locate an item in a text purely by quote/context (no diff), e.g. when restoring from
---- trash or re-attaching a detached annotation. `near` is an optional 0-based offset hint.
---- Returns s, e offsets or nil.
-function M.locate(t, item, near)
+--- trash, re-attaching a detached annotation or loading without a snapshot. `near` is an
+--- optional 0-based offset hint; opts.fuzzy allows near matches of an edited quote.
+--- Returns s, e offsets and { how, score, ambiguous }, or nil.
+function M.locate(t, item, near, opts)
+  opts = opts or {}
   if not item.quote or item.quote == '' then return nil end
-  local s, score = best_occurrence(t.str, item, near)
-  if not s then return nil end
-  if score >= M.MIN_CONTEXT then return s, s + #item.quote end
-  if #item.quote >= M.MIN_UNIQUE_QUOTE and #occurrences(t.str, item.quote, 2) == 1 then
-    return s, s + #item.quote
+  local cands = M.candidates(t, item, near, 3, { fuzzy = opts.fuzzy == true })
+  local best = cands[1]
+  if not best then return nil end
+  local info = { how = 'relocated', score = best.score }
+  if best.how == 'exact' then
+    if best.context >= M.MIN_CONTEXT then
+      info.ambiguous = ambiguous(cands) and cands[2].context >= M.MIN_CONTEXT
+      return best.s, best.e, info
+    end
+    if #item.quote >= M.MIN_UNIQUE_QUOTE and #cands == 1 then return best.s, best.e, info end
+    return nil
+  end
+  if fuzzy_ok(item, best) then
+    info.how, info.ambiguous = 'fuzzy', ambiguous(cands)
+    return best.s, best.e, info
   end
   return nil
 end
@@ -306,23 +520,26 @@ function M.reanchor(old_lines, new_lines, items)
       placed = { ns, ne, 'mapped' }
     else
       local near = ns or (so and map_char(so, 'start'))
-      local s, score = nil, 0
-      if it.quote and it.quote ~= '' then
-        s, score = best_occurrence(new.str, it, near)
-      end
-      if s and score >= M.MIN_CONTEXT then
-        placed = { s, s + #it.quote, 'relocated' }
+      local cands = (it.quote and it.quote ~= '') and M.candidates(new, it, near, 3, { fuzzy = false }) or {}
+      local best = cands[1]
+      if best and best.context >= M.MIN_CONTEXT then
+        local amb = ambiguous(cands) and cands[2].context >= M.MIN_CONTEXT
+        placed = { best.s, best.e, 'relocated', best.score, amb }
       elseif mapped_text and mapped_text ~= '' and not mapped_text:match('^%s*$') then
         placed = { ns, ne, 'edited' }
-      elseif s and #it.quote >= M.MIN_UNIQUE_QUOTE and #occurrences(new.str, it.quote, 2) == 1 then
-        placed = { s, s + #it.quote, 'relocated' }
+      elseif best and #it.quote >= M.MIN_UNIQUE_QUOTE and #cands == 1 then
+        placed = { best.s, best.e, 'relocated', best.score }
+      elseif not best and it.quote and it.quote ~= '' then
+        -- the text was moved and edited: look for something close to it
+        local f = M.candidates(new, it, near, 3)
+        if f[1] and fuzzy_ok(it, f[1]) then placed = { f[1].s, f[1].e, 'fuzzy', f[1].score, ambiguous(f) } end
       end
     end
 
     if placed then
       local sr, sc = M.off_to_pos(new, placed[1])
       local er, ec = M.off_to_pos(new, placed[2])
-      result[it.id] = { s = { sr, sc }, e = { er, ec }, how = placed[3] }
+      result[it.id] = { s = { sr, sc }, e = { er, ec }, how = placed[3], score = placed[4], ambiguous = placed[5] }
     else
       result[it.id] = false
     end
@@ -344,11 +561,11 @@ function M.reanchor_by_quote(new_lines, items)
       placed = { s = it.s, e = it.e, how = 'same' }
     else
       local near = it.s and M.pos_to_off(t, it.s[1], it.s[2]) or nil
-      local so, eo = M.locate(t, it, near)
+      local so, eo, info = M.locate(t, it, near, { fuzzy = true })
       if so then
         local sr, sc = M.off_to_pos(t, so)
         local er, ec = M.off_to_pos(t, eo)
-        placed = { s = { sr, sc }, e = { er, ec }, how = 'relocated' }
+        placed = { s = { sr, sc }, e = { er, ec }, how = info.how, score = info.score, ambiguous = info.ambiguous }
       end
     end
     result[it.id] = placed or false
@@ -360,6 +577,35 @@ end
 function M.span_text(lines, s, e)
   local t = lines.str and lines or M.text(lines)
   return t.str:sub(M.pos_to_off(t, s[1], s[2]) + 1, M.pos_to_off(t, e[1], e[2]))
+end
+
+M.MAX_CONTEXT = 96
+
+--- Context for a new annotation: `n` bytes each side, grown (up to MAX_CONTEXT) until the
+--- quote with its context occurs only once, then extended to a word boundary.
+function M.unique_context(lines, s, e, n)
+  local t = lines.str and lines or M.text(lines)
+  local so, eo = M.pos_to_off(t, s[1], s[2]), M.pos_to_off(t, e[1], e[2])
+  local quote = t.str:sub(so + 1, eo)
+  local size = n
+  local pre, suf
+  while true do
+    pre, suf = t.str:sub(math.max(1, so - size + 1), so), t.str:sub(eo + 1, eo + size)
+    if quote == '' or size >= M.MAX_CONTEXT or #occurrences(t.str, pre .. quote .. suf, 2) <= 1 then break end
+    size = math.min(M.MAX_CONTEXT, size + 32)
+  end
+  -- don't cut words in half at the outer edges
+  local ps = so - #pre -- 0-based start of the prefix
+  local k = 0
+  while ps > 0 and k < 16 and not t.str:sub(ps, ps):match('%s') do
+    ps, k = ps - 1, k + 1
+  end
+  local se = eo + #suf
+  k = 0
+  while se < #t.str and k < 16 and not t.str:sub(se + 1, se + 1):match('%s') do
+    se, k = se + 1, k + 1
+  end
+  return t.str:sub(ps + 1, so), t.str:sub(eo + 1, se)
 end
 
 --- Prefix/suffix context around a span, `n` bytes each.

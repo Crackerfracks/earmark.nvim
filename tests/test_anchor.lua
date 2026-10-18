@@ -130,4 +130,124 @@ T['locate finds by context and refuses ambiguous short quotes'] = function()
   eq(anchor.locate(t, bare), nil)
 end
 
+T['fuzzy matcher agrees with a brute-force edit distance'] = function()
+  local function brute(str, pat, k)
+    local m, set = #pat, {}
+    local col = {}
+    for i = 0, m do col[i] = i end
+    for j = 1, #str do
+      local prev = col[0]
+      col[0] = 0
+      for i = 1, m do
+        local cur = col[i]
+        col[i] = math.min(prev + (pat:byte(i) == str:byte(j) and 0 or 1), col[i - 1] + 1, cur + 1)
+        prev = cur
+      end
+      if col[m] <= k then set[j] = col[m] end
+    end
+    return set
+  end
+  math.randomseed(11)
+  local alpha = 'ab c'
+  local function rnd(len)
+    local t = {}
+    for i = 1, len do
+      local r = math.random(#alpha)
+      t[i] = alpha:sub(r, r)
+    end
+    return table.concat(t)
+  end
+  for _ = 1, 500 do
+    local str, pat, k = rnd(math.random(0, 30)), rnd(math.random(1, 8)), math.random(0, 3)
+    local set = brute(str, pat, k)
+    local seen = {}
+    for _, h in ipairs(anchor._approx(str, pat, k)) do
+      eq(set[h.e], h.dist) -- every reported end is a real match with the right distance
+      for j = h.first, h.last do seen[j] = true end
+    end
+    for j in pairs(set) do
+      eq({ j, seen[j] or false }, { j, true }) -- and every real match end is in a reported run
+    end
+  end
+end
+
+T['a typo in the quote is found by fuzzy matching when there is no snapshot'] = function()
+  local lines = { 'Intro line.', 'The committee approved the annual budget yesterday.', 'Outro.' }
+  local it = item(lines, 'approved the annual budget')
+  local new = vim.deepcopy(lines)
+  new[2] = 'The committee aproved the anual budget yesterday.'
+  table.insert(new, 1, 'A new first line')
+  local r = anchor.reanchor_by_quote(new, { it })[it.id]
+  eq(text_at(new, r), 'aproved the anual budget')
+  eq(r.how, 'fuzzy')
+  eq(r.score < 1, true)
+end
+
+T['two equal occurrences with equal context are ambiguous'] = function()
+  local lines = { 'call compute(a);', 'other', 'call compute(a);' }
+  local it = { id = 'x', quote = 'compute(a)', prefix = 'call ', suffix = ';' } -- no position hint
+  local r = anchor.reanchor_by_quote(lines, { it })[it.id]
+  eq(r.ambiguous, true)
+end
+
+T['a repeated quote with distinct context relocates to the right one'] = function()
+  local lines = { 'alpha: the value here', 'beta: the value here', 'gamma' }
+  local it = item(lines, 'the value', 2)
+  local new = { 'gamma', 'zeta', 'alpha: the value here', 'beta: the value here' }
+  local r = anchor.reanchor_by_quote(new, { it })[it.id]
+  eq(r.s[1], 3)
+  eq(r.score >= 0.9, true)
+  eq(r.ambiguous or false, false)
+end
+
+T['a moved and edited sentence is found again with a snapshot'] = function()
+  local old = { 'First paragraph stays.', '', 'The quick brown fox jumps over the lazy dog today.', '', 'End.' }
+  local it = item(old, 'quick brown fox jumps over the lazy dog')
+  local new = { 'The quick brown fox jumped over the lazy dog today.', '', 'First paragraph stays.', '', 'End.' }
+  local r = anchor.reanchor(old, new, { it })[it.id]
+  eq(r ~= false, true)
+  eq(r.s[1], 0)
+  eq(r.how == 'fuzzy' or r.how == 'edited', true)
+end
+
+T['context grows until the quote is unique'] = function()
+  local lines = { 'one two three. one two three. one two three.' }
+  local pre, suf = anchor.unique_context(lines, { 0, 19 }, { 0, 22 }, 4) -- the middle "two"
+  local t = anchor.text(lines)
+  local count = 0
+  local needle = pre .. 'two' .. suf
+  local init = 1
+  while true do
+    local f = t.str:find(needle, init, true)
+    if not f then break end
+    count, init = count + 1, f + 1
+  end
+  eq(count, 1)
+  -- a unique quote keeps the requested size (plus word padding)
+  local p2 = anchor.unique_context({ 'aaaa bbbb unique cccc dddd' }, { 0, 10 }, { 0, 16 }, 3)
+  eq(p2, 'bbbb ')
+end
+
+T['re-anchoring a reindented 20k-line buffer stays fast'] = function()
+  local old, items = {}, {}
+  for i = 1, 20000 do
+    old[i] = ('line %d has some words: alpha beta gamma %d'):format(i, i * 7)
+  end
+  for i = 1, 200 do
+    local row = i * 97
+    items[i] = { id = 'a' .. i, s = { row, 5 }, e = { row, 20 }, quote = old[row + 1]:sub(6, 20) }
+  end
+  local new = {}
+  for i, l in ipairs(old) do
+    new[i] = '    ' .. l
+  end
+  local t0 = vim.uv.hrtime()
+  local res = anchor.reanchor(old, new, items)
+  local ms = (vim.uv.hrtime() - t0) / 1e6
+  for _, it in ipairs(items) do
+    eq(anchor.span_text(new, res[it.id].s, res[it.id].e), it.quote)
+  end
+  eq({ 'ms', ms < 1500 }, { 'ms', true })
+end
+
 return T
