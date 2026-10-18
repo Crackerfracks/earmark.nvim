@@ -136,6 +136,27 @@ T['accepting the current text clears stale'] = function()
   eq({ a.status, a.original_quote }, { 'ok', 'speedy' })
 end
 
+T['the review list suggests where a detached annotation could go'] = function()
+  h.open({ 'The committee approved the annual budget yesterday.', 'Other text.' })
+  local id = mark({ 0, 14 }, { 0, 40 }, '1') -- "approved the annual budget"
+  child.api.nvim_buf_set_lines(0, 0, 1, false, {})
+  child.lua('require("earmark.buffer").on_change(0)')
+  child.api.nvim_buf_set_lines(0, 1, 2, false, { 'Later: the board aproved the anual budget again.' })
+  child.lua('require("earmark.buffer").on_change(0)')
+  eq(child.lua_get('require("earmark.buffer").annotation(0, ...).status', { id }), 'detached')
+  stub_select()
+  want('approved', 'Move it to line 2')
+  child.type_keys(' md')
+  eq(child.lua_get('_G.texts()'), { { text = 'aproved the anual budget', label = '1', status = 'ok' } })
+end
+
+T[':Earmark check lists placement'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 }, '1')
+  local lines = child.lua_get('require("earmark").check()')
+  eq(lines, { 'ok        100%  exact     1:5  "quick"' })
+end
+
 T['nothing to review'] = function()
   h.open()
   mark({ 0, 4 }, { 0, 9 }, '1')

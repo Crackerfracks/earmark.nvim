@@ -115,6 +115,26 @@ end
 -- Review list
 ---------------------------------------------------------------------------
 
+--- Places the annotation's text could be now (excluding where it is): { {s, e, text, score} }.
+function M.suggestions(buf, a)
+  local anchor = require('earmark.anchor')
+  local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
+  local t = anchor.text(lines)
+  local S = buffer.state[buf]
+  local cur_s = buffer.live_pos(buf, S, a.id)
+  local near = (cur_s or a.s) and anchor.pos_to_off(t, (cur_s or a.s)[1], (cur_s or a.s)[2]) or nil
+  local item = { quote = a.original_quote, prefix = a.prefix, suffix = a.suffix }
+  local out = {}
+  for _, c in ipairs(anchor.candidates(t, item, near, 4, { fuzzy = true })) do
+    local sr, sc = anchor.off_to_pos(t, c.s)
+    local er, ec = anchor.off_to_pos(t, c.e)
+    if not (cur_s and cur_s[1] == sr and cur_s[2] == sc) then
+      out[#out + 1] = { s = { sr, sc }, e = { er, ec }, text = t.str:sub(c.s + 1, c.e), score = c.score }
+    end
+  end
+  return out
+end
+
 local function actions_for(buf, it)
   local a = it.annotation
   local list = {}
@@ -127,6 +147,15 @@ local function actions_for(buf, it)
       run = function()
         buffer.accept(buf, a.id)
         notify('accepted the current text')
+      end,
+    }
+  end
+  for _, sug in ipairs(M.suggestions(buf, a)) do
+    list[#list + 1] = {
+      label = ('Move it to line %d: "%s" (%d%%)'):format(sug.s[1] + 1, flat(sug.text):sub(1, 40), math.floor(sug.score * 100 + 0.5)),
+      run = function()
+        buffer.reanchor(buf, a.id, sug.s, sug.e)
+        notify(('moved to line %d'):format(sug.s[1] + 1))
       end,
     }
   end

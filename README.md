@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Smarter re-anchoring and project label-set files are next.
+Status: early. Project label-set files, export and the zk bridge are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -116,7 +116,8 @@ Query words: `#tag`, `@ident`, `label:<key or name>`, `set:<name>`, `status:ok|s
 `<leader>md` lists annotations that are **stale** (their text was rewritten),
 **ambiguous** (the text appears more than once) or **detached** (the text is gone). For each
 one you can jump to it, compare the original with the current text, accept the current text,
-attach it to a selection (`:'<,'>Earmark reanchor`), or erase it.
+move it to one of the places its text could be now (exact or close matches, scored), attach
+it to a selection (`:'<,'>Earmark reanchor`), or erase it.
 
 `:Earmark scratch` reopens a scratch buffer you annotated earlier, with its text and
 annotations.
@@ -145,7 +146,7 @@ saved). `indicators.show_empty = true` adds a dot for annotations without a note
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -242,6 +243,18 @@ listed in an auto-written `.earmark/.gitignore`, so committed records stay small
 clone without snapshots re-anchors by quote and surrounding text instead.
 
 Tags you use are counted in `<storage_dir>/tags.json`, which feeds the `<leader>mt` list.
+
+How an annotation finds its text again, in order: the diff of the saved snapshot against
+the current text; the exact text with the most similar surroundings (each annotation
+remembers enough surrounding text to be unique when it is made); and, when the text itself
+was edited and moved, the closest fuzzy match (whitespace ignored). When two places fit
+equally well, the annotation is marked **ambiguous** instead of guessing, and `<leader>md`
+offers the candidates. `:Earmark check` prints how each annotation was placed; run
+headless, it exits with status 1 if any is detached:
+
+```sh
+nvim --headless notes/draft.md -c 'Earmark check' -c q
+```
 
 Writes are atomic. A record that can't be parsed is left untouched, and saving for that
 buffer is disabled with a warning. v1 records (snapshot inline) are read as is and rewritten
