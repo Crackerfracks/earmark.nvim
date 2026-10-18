@@ -719,13 +719,15 @@ end
 
 --- Move an annotation to [s, e) (re-attaching a detached one). Its original text is kept,
 --- so it reads as stale if the new text differs a lot.
-function M.reanchor(buf, id, s, e)
+--- opts.accept: the new text becomes what it annotates (regrowing a span on purpose).
+function M.reanchor(buf, id, s, e, opts)
   buf = bufnr(buf)
   local S = M.get(buf, { no_create = true })
   local a = S and S.annos[id]
   if not a or not s or (s[1] == e[1] and s[2] == e[2]) then return false end
   local t = anchor.text(lines_of(buf))
   local text = anchor.span_text(t, s, e)
+  if opts and opts.accept then a.original_quote = text end
   a.status = status_for(a, text)
   a.score, a.how = nil, nil
   render(buf, S, a, s, e)
@@ -746,6 +748,18 @@ function M.accept(buf, id)
   a.status, a.score, a.how = 'ok', nil, nil
   render(buf, S, a, s, e)
   touch(buf, S, a, 'update')
+  return true
+end
+
+--- Colour a label differently in this document only (nil resets it).
+function M.set_color(buf, value, hex)
+  buf = bufnr(buf)
+  local S = M.get(buf)
+  if not S then return false end
+  S.colors[label_key(value)] = hex
+  M.rerender(buf)
+  M.schedule_save(buf)
+  emit(buf, 'update', nil)
   return true
 end
 

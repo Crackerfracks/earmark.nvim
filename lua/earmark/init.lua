@@ -36,6 +36,11 @@ end
 
 local function first_key()
   if last_value and last_value.set == sets.current and sets.label(last_value) then return last_value.label end
+  local d = config.options.default_label
+  if type(d) == 'string' then
+    local set, key = d:match('^(.-)/(.+)$')
+    if set == sets.current and sets.label({ set = set, label = key }) then return key end
+  end
   local set = sets.by_name[sets.current]
   return set and set.labels[1] and set.labels[1].key or nil
 end
@@ -520,6 +525,100 @@ function M.scratch()
   end)
 end
 
+---------------------------------------------------------------------------
+-- Export, occurrences, regrow, colour
+---------------------------------------------------------------------------
+
+function M.export()
+  require('earmark.export').run(0)
+end
+
+--- `<leader>mo`: give every other occurrence of the annotated text the same labels.
+function M.occurrences()
+  local h = hit_under_cursor()
+  if not h then return end
+  local buf = api.nvim_get_current_buf()
+  local anchor = require('earmark.anchor')
+  local t = anchor.text(api.nvim_buf_get_lines(buf, 0, -1, false))
+  local quote = h.a.quote
+  if not quote or quote == '' then return end
+  local n, init = 0, 1
+  while true do
+    local f = t.str:find(quote, init, true)
+    if not f then break end
+    init = f + #quote
+    local sr, sc = anchor.off_to_pos(t, f - 1)
+    local er, ec = anchor.off_to_pos(t, f - 1 + #quote)
+    local s, e = { sr, sc }, { er, ec }
+    if not (sr == h.s[1] and sc == h.s[2]) then
+      local existing
+      for _, x in ipairs(buffer.find(buf, s, e)) do
+        if x.s[1] == sr and x.s[2] == sc and x.e[1] == er and x.e[2] == ec then existing = x end
+      end
+      if not existing then
+        local a = buffer.add(buf, s, e, vim.deepcopy(h.a.values[1]))
+        if a and #h.a.values > 1 then buffer.set_values(buf, a.id, vim.deepcopy(h.a.values)) end
+        n = n + 1
+      end
+    end
+  end
+  notify(('annotated %d more occurrence%s'):format(n, n == 1 and '' or 's'))
+end
+
+local regrow_target
+--- `<leader>mg{motion}` / `{Visual}<leader>mg`: the annotation under the cursor now covers
+--- the motion or selection (its note, labels and tags stay).
+function M.regrow_expr()
+  local mode = api.nvim_get_mode().mode
+  local hits
+  if mode:match('^[vV\22]') then
+    local a, b = vim.fn.getpos('v'), vim.fn.getpos('.')
+    if a[2] > b[2] or (a[2] == b[2] and a[3] > b[3]) then a, b = b, a end
+    hits = buffer.find(0, { a[2] - 1, a[3] - 1 }, { b[2] - 1, b[3] })
+  else
+    hits = buffer.find(0, cursor_pos())
+  end
+  if #hits == 0 then
+    vim.schedule(function()
+      notify('nothing under the cursor')
+    end)
+    return '<Ignore>'
+  end
+  regrow_target = hits[1].a.id
+  vim.o.operatorfunc = "v:lua.require'earmark'.regrow_opfunc"
+  return 'g@'
+end
+
+function M.regrow_opfunc(motion)
+  local id = regrow_target
+  regrow_target = nil
+  if not id then return end
+  local spans = region(motion)
+  if #spans == 0 then return end
+  local s, e = spans[1].s, spans[#spans].e
+  if buffer.reanchor(0, id, s, e, { accept = true }) then
+    pcall(api.nvim_win_set_cursor, 0, { s[1] + 1, s[2] })
+  end
+end
+
+--- `:Earmark color #rrggbb` colours the label under the cursor differently in this file;
+--- `:Earmark color reset` undoes it.
+function M.color(args)
+  local h = hit_under_cursor()
+  if not h then return end
+  local arg = args and args[1]
+  if not arg then
+    local cur = sets.color(h.a.values[1], buffer.get(0) and buffer.get(0).colors)
+    return notify(('%s is %s; :Earmark color #rrggbb or reset'):format(buffer.display_name(0, h.a.values[1]), cur or '?'))
+  end
+  if arg == 'reset' then
+    buffer.set_color(0, h.a.values[1], nil)
+    return
+  end
+  if not arg:match('^#%x%x%x%x%x%x$') then return notify('colour must look like #e06c75', vim.log.levels.WARN) end
+  buffer.set_color(0, h.a.values[1], arg:lower())
+end
+
 function M.tags()
   local h = hit_under_cursor()
   if h then require('earmark.ui.tags_picker').open(0, h.a.id) end
@@ -609,6 +708,11 @@ local function register_actions()
   A({ name = 'qf', desc = 'annotations to quickfix', cmd = M.qf, complete = function() return { 'all' } end })
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
+  A({ name = 'export', desc = 'export annotations to Markdown', modes = { n = M.export } })
+  A({ name = 'occurrences', desc = 'annotate other occurrences of this text', modes = { n = M.occurrences } })
+  A({ name = 'regrow', desc = 'move the annotation onto a motion', modes = { n = M.regrow_expr, x = M.regrow_expr }, expr = true, cmd = false })
+  A({ name = 'color', desc = 'colour this label differently in this file', cmd = M.color,
+    complete = function() return { 'reset' } end })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
   A({ name = 'pick_set', desc = 'choose the label set', modes = { n = M.pick_set } })
   A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
