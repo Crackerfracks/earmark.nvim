@@ -56,44 +56,4 @@ T['hover.show / hover.hide'] = function()
   eq(#h.floats(), 0)
 end
 
-T['<leader>mz promotes the annotation to a zk note'] = function()
-  h.open()
-  child.lua([[
-    _G.calls = {}
-    package.loaded['zk.api'] = {
-      new = function(path, opts, cb)
-        table.insert(_G.calls, { path = path, opts = opts })
-        cb(nil, { path = _G.root .. '/zk/new-note.md' })
-      end,
-    }
-    require('earmark.config').options.zk.open = false
-    local a = require('earmark').annotate(0, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
-    require('earmark').set_note(0, a.id, 'Why so fast?\nmore')
-    _G.id = a.id
-  ]])
-  h.cursor(1, 5)
-  child.type_keys(' mz')
-  h.settle()
-  local call = child.lua_get('_G.calls[1]')
-  eq(call.opts.title, 'Why so fast?')
-  eq(call.opts.content, '> quick\n\nWhy so fast?\nmore\n\n[source](notes/doc.md#L1)')
-  local a = child.lua_get('require("earmark").get(0, _G.id)')
-  eq(a.zk:match('zk/new%-note%.md$') ~= nil, true)
-  eq(a.note, 'Why so fast?\nmore') -- the annotation keeps its note
-  child.type_keys(' mi')
-  eq(child.lua_get('require("earmark.ui.hover").shown and vim.api.nvim_buf_get_lines(require("earmark.ui.hover").shown.buf, 0, 1, false)[1]'):find('↗ zk', 1, true) ~= nil, true)
-end
-
-T['<leader>mz without zk-nvim warns once'] = function()
-  h.open()
-  child.lua([[
-    _G.msgs = {}
-    vim.notify = function(m) table.insert(_G.msgs, m) end
-    require('earmark').annotate(0, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
-  ]])
-  h.cursor(1, 5)
-  child.type_keys(' mz', ' mz')
-  eq(child.lua_get('_G.msgs'), { 'earmark: promoting needs zk-nvim (github.com/zk-org/zk-nvim)' })
-end
-
 return T

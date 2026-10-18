@@ -191,15 +191,20 @@ function M.project_items(buf)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   local doc = store.doc(buf)
   if not doc or not doc.root then return M.doc_items(buf) end
+  return M.root_items(doc.root)
+end
+
+--- Picker items for every annotation under project root `root`.
+function M.root_items(root)
   for b in pairs(buffer.state) do
     buffer.save(b) -- records on disk match what's on screen
   end
   local loaded = {}
   for b, S in pairs(buffer.state) do
-    if S.doc.root == doc.root then loaded[S.doc.key] = b end
+    if S.doc.root == root then loaded[S.doc.key] = b end
   end
   local items = {}
-  for _, r in ipairs(M.records(doc.root)) do
+  for _, r in ipairs(M.records(root)) do
     local b = loaded[r.key]
     if b then
       for _, it in ipairs(M.doc_items(b)) do
@@ -232,7 +237,7 @@ function M.project_items(buf)
 end
 
 ---------------------------------------------------------------------------
--- Query grammar: #tag  @ident  label:3  set:vivid  status:stale  has:note  free text
+-- Query grammar: #tag  @ident  label:3  set:vivid  status:stale  has:note|tags|zk  free text
 ---------------------------------------------------------------------------
 
 function M.parse_query(q)
@@ -258,6 +263,7 @@ local function matches(it, f)
   if f.status and (a.status or 'ok') ~= f.status then return false end
   if f.has == 'note' and not a.note then return false end
   if f.has == 'tags' and #tags.of(a) == 0 then return false end
+  if f.has == 'zk' and not a.zk then return false end
   if f.set or f.label then
     local hit = false
     for _, v in ipairs(a.values) do

@@ -82,7 +82,9 @@ function M.content(buf, hits)
       parts[#parts + 1] = { '  ' .. table.concat(vim.tbl_map(function(t) return '@' .. t end, idents), ' '), fg1 }
     end
     if a.note then parts[#parts + 1] = { '  ' .. (nerd() and '✎' or '*'), fg1 } end
-    if a.zk then parts[#parts + 1] = { '  ' .. (nerd() and '↗' or '^') .. ' zk', 'Comment' } end
+    if a.zk then
+      parts[#parts + 1] = { '  ' .. (nerd() and '↗' or '^') .. ' zk ' .. vim.fn.fnamemodify(a.zk, ':t:r'), 'Comment' }
+    end
     if a.status == 'stale' then
       local pct = math.floor(anchor.similarity(a.quote or '', a.original_quote or '') * 100 + 0.5)
       parts[#parts + 1] = { ('  ~ stale (%d%%)'):format(pct), 'DiagnosticWarn' }

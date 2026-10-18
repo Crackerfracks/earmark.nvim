@@ -96,7 +96,6 @@ function M.check()
     { 'telescope', 'telescope.nvim', 'picker' },
     { 'flash', 'flash.nvim', '<leader>mj jump labels' },
     { 'which-key', 'which-key.nvim', '<leader>m group name' },
-    { 'zk', 'zk-nvim', '<leader>mz promote to a zk note' },
   }
   for _, p in ipairs(optional) do
     if pcall(require, p[1]) then
@@ -108,6 +107,29 @@ function M.check()
   health.info('picker = ' .. o.picker .. (o.picker == 'auto' and ' (snacks, then telescope, then vim.ui.select)' or ''))
   if vim.g.have_nerd_font == false then
     health.info('vim.g.have_nerd_font = false: plain fallback icons are used')
+  end
+
+  health.start('earmark: zk')
+  local cmd = o.zk.cmd or 'zk'
+  if vim.fn.executable(cmd) == 1 then
+    local ok, res = pcall(function()
+      return vim.system({ cmd, '--version' }, { text = true }):wait(3000)
+    end)
+    local version = ok and res.code == 0 and vim.trim(res.stdout or '') or 'version unknown'
+    health.ok(('%s found (%s)'):format(cmd, version))
+  else
+    health.info('zk not found (Arch: sudo pacman -S zk); <leader>mz needs it to make notes')
+  end
+  -- the file you ran :checkhealth from, else the working directory
+  local alt = vim.fn.bufnr('#')
+  local file = alt > 0 and vim.bo[alt].buftype == '' and vim.api.nvim_buf_get_name(alt) or ''
+  local where = file ~= '' and file or vim.uv.cwd()
+  local nb, err = require('earmark.zk').notebook(where)
+  local label = vim.fn.fnamemodify(where, ':~:.')
+  if nb then
+    health.ok(('notebook for %s: %s'):format(label, vim.fn.fnamemodify(nb, ':~')))
+  else
+    health.info(('%s: %s'):format(label, err))
   end
 end
 

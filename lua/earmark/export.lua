@@ -52,6 +52,7 @@ local function item(buf, x, with_name)
       out[#out + 1] = l == '' and '' or ('  ' .. l)
     end
   end
+  if a.zk then out[#out + 1] = '  ' .. require('earmark.zk').export_link(buf, a) end
   return out
 end
 

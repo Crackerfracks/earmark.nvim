@@ -16,8 +16,9 @@ CONTENTS                                                    *earmark-contents*
  11. Storage .................................... |earmark-storage|
  12. API ........................................ |earmark-api|
  13. Events ..................................... |earmark-events|
- 14. Statusline ................................. |earmark-statusline|
- 15. Troubleshooting and FAQ .................... |earmark-troubleshooting|
+ 14. zk notes ................................... |earmark-zk-notes|
+ 15. Statusline ................................. |earmark-statusline|
+ 16. Troubleshooting and FAQ .................... |earmark-troubleshooting|
 
 ==============================================================================
 1. INTRODUCTION                                                *earmark-intro*
@@ -100,8 +101,9 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
 `<leader>mg{motion}` Move the annotation under the cursor onto the motion
 `{Visual}<leader>mg` (or the selection); its note and labels stay.
                                                             *earmark-regrow*
-`<leader>mz`         Promote the annotation to a zk note (zk-nvim).
-                                                                *earmark-zk*
+`<leader>mz`         Promote the annotation to a zk note, or open the note it
+                   has; in a note, list the annotations linked to it
+                   (|earmark-zk-notes|).                        *earmark-zk*
 `<leader>mc`         The palette: every label of the set as a big colour patch,
                    with your name for it, its colour name, hex and uses here.
                    <CR> makes it the label `gh` offers first; digits jump to
@@ -206,7 +208,7 @@ line of the note.                                         *earmark-query*
 Query words for `:Earmark pick`, `:Earmark pick_all` and `:Earmark qf`:
 
   #tag  @ident  label:<key or name>  set:<name>
-  status:<ok, stale, ambiguous or detached>  has:note  has:tags
+  status:<ok, stale, ambiguous or detached>  has:note  has:tags  has:zk
   anything else matches the text, the name or the note
 
 The review list (`<leader>md`) offers, for each annotation that needs
@@ -239,6 +241,10 @@ text could be now (scored candidates), attach it to a selection, or erase.
     relabel add_value rename cycle_set pick_set palette
     review diff export occurrences zk
                        the same as the keys in |earmark-keys|
+    zk new             make a new zk note even if the annotation has one
+    zk link            link the annotation to a note picked from `zk list`
+    zk pick [query]    annotations in the project with a note; <CR> opens it
+    zk sources         in a note: the annotations linked to it
     pick [query]       pick in this file (|earmark-query|)
     pick_all [query]   pick in the project
     qf [all] [query]   annotations into the quickfix list; `all`: project
@@ -281,7 +287,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
                  show_empty = false },
   overlap = { style = 'blend' },   -- or 'top'
   export = { group_by = 'label', include_detached = true, format = nil },
-  zk = { dir = nil, open = true },
+  zk = { cmd = 'zk', notebook = nil, dir = nil, template = nil,
+         open = true },          -- |earmark-zk-notes|
   statusline = { digits = true, color_name = true },
   color_names = true,      -- false, or function(hex) -> name|nil
   color_adapt = true,      -- |earmark-color-adapt|
@@ -385,6 +392,14 @@ earmark.statusline({opts})                            *earmark.statusline()*
 earmark.on({event}, {fn})                                     *earmark.on()*
     Run `fn(data)` on an event (|earmark-events|): 'Note' or 'EarmarkNote'.
     Returns the autocmd id.
+earmark.zk.promote({buf}, {id}, {opts}, {cb})         *earmark.zk.promote()*
+    Make a zk note for an annotation; `cb(err, path)` when done. An
+    annotation whose note still exists keeps it (cb gets its path) unless
+    `opts.force`. `opts.open` opens the note (default: `zk.open`).
+earmark.zk.notebook({buf})                           *earmark.zk.notebook()*
+    The notebook's path for a buffer or file path, or nil and the reason.
+earmark.zk.path({annotation}, {buf})                     *earmark.zk.path()*
+    Absolute path of the annotation's note, or nil when it has none.
 
 Anything not listed here is internal and may change.
 
@@ -394,12 +409,83 @@ Anything not listed here is internal and may change.
 |User| autocmds with `data = { buf, action, ids }`:
 `EarmarkChanged` for every change, and one of `EarmarkAdd`, `EarmarkUpdate`,
 `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`, `EarmarkNote`,
-`EarmarkLoad`.
+`EarmarkLoad`, `EarmarkZk` (an annotation was linked to a zk note, or
+unlinked).
 >lua
   require('earmark').on('Note', function(d) print(d.buf, vim.inspect(d.ids)) end)
 <
 ==============================================================================
-14. STATUSLINE                                            *earmark-statusline*
+14. ZK NOTES                                                *earmark-zk-notes*
+
+earmark makes notes in a zk notebook (https://github.com/zk-org/zk) by
+running the `zk` program; zk-nvim is not needed. Install zk (Arch:
+`sudo pacman -S zk`) and create a notebook with `zk init`.
+
+`<leader>mz` on an annotation makes a note with the annotated text as a
+quote, the annotation's note, and a `[source](...#L12)` link back to the
+line, and opens it in a split (`zk.open = false` to stay). The title is the
+first line of the annotation's note, else the start of the quoted text. The
+annotation keeps its note and remembers the zk note; the hover shows
+`↗ zk <file name>`. After promoting, earmark offers to link the other
+annotations in the file with the same text and label to the same note.
+
+Pressed again, `<leader>mz` opens the note (or goes to the window showing
+it) instead of making another. When the note's file is gone it asks whether
+to make a new note or unlink it. In a note, with no annotation under the
+cursor, it lists the annotations linked to that note. The subcommands:
+
+  :Earmark zk           what `<leader>mz` does
+  :Earmark zk new       a new note even if the annotation has one
+  :Earmark zk link      link an existing note, picked from `zk list`
+  :Earmark zk pick      the project's annotations that have a note; <CR>
+                        opens the note (the query word `has:zk` filters
+                        any picker the same way)
+  :Earmark zk sources   the annotations linked to the note you are in
+
+The note starts with frontmatter earmark writes, so zk indexes it:
+>yaml
+  ---
+  title: "Why does the fox run?"
+  tags: ["npc", "todo"]
+  earmark:
+    id: "..."
+    set: "vivid"
+    key: "3"
+    label: "NPC"
+    source: "notes/chapter-1.md"
+    line: 12
+  ---
+<
+The tags are the label's name, then the annotation's own tags and the
+#tags in its note. `source` is the file's place in the notebook, or its
+absolute path when it is outside. `line` is left out for a detached
+annotation. The `[source]` link is relative to the note's folder (absolute
+for a file outside the notebook), so zk's backlinks find the source too.
+The annotation stores the note's path relative to the notebook.
+
+The notebook is `zk.notebook` if set, else the nearest folder with `.zk`
+above the file, else `$ZK_NOTEBOOK_DIR`. Options in `zk`:
+
+  cmd        the zk program (default 'zk')
+  notebook   the notebook folder
+  dir        notebook subfolder for new notes, or a function that gets
+             `{ buf, annotation, value, label, notebook, source }` and
+             returns one, e.g. a folder per label
+  template   your own zk template; it gets the body only and
+             `--extra id=...,set=...,key=...,line=...`, and earmark writes
+             no frontmatter
+  open       open a new note in a split (default true)
+
+The notebook as the project: `.zk` is one of `root_markers`, so annotations
+on notes go in `<notebook>/.earmark/`, which zk ignores. A `.earmark` folder
+nearer to the file wins (it comes first in `root_markers`), so don't create
+one inside the notebook unless you want a separate project there.
+
+|:checkhealth| earmark shows whether zk is installed, its version, and the
+notebook for the current file.
+
+==============================================================================
+15. STATUSLINE                                            *earmark-statusline*
 
 `require('earmark').statusline()` returns a statusline string, empty in
 buffers earmark does not track: a swatch and the label the next `gh` uses,
@@ -411,11 +497,11 @@ ambiguous ones, and for numbered sets the digits 1234567890 in their colours.
   sections = { lualine_x = { function() return em.statusline({ hl = 'lualine_x_normal' }) end } }
 <
 ==============================================================================
-15. TROUBLESHOOTING AND FAQ                          *earmark-troubleshooting*
+16. TROUBLESHOOTING AND FAQ                          *earmark-troubleshooting*
 
 |:checkhealth| earmark checks the Neovim version, that the storage directory
 is writable, the project root for the current directory, every record in it,
-set files that failed to load, and which optional plugins were found.
+set files that failed to load, which optional plugins were found, and zk.
 
 `:Earmark log` lists recent warnings and errors.
 

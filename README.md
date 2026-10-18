@@ -82,7 +82,7 @@ that opens it with this checkout, if you want to look before touching your confi
 | `<leader>mD` | compare an annotation's original text with what it says now |
 | `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
-| `<leader>mz` | promote the annotation under cursor to a zk note ([zk-nvim](https://github.com/zk-org/zk-nvim)) |
+| `<leader>mz` | promote the annotation under cursor to a [zk](https://github.com/zk-org/zk) note, or open the note it already has; in a note, list the annotations linked to it (see [zk](#zk)) |
 | `<leader>mg{motion}` / `{Visual}<leader>mg` | move the annotation under cursor onto the motion / selection (note and labels stay) |
 | `<leader>mc` | the palette: every label of the set as a big colour patch with your name for it, its colour's name, hex and uses; `<CR>` makes it the label `gh` offers first, digits jump to a key, `r` names it, `<Tab>` switches sets |
 | `<leader>ms` | switch to the next label set (a popup shows its colours) |
@@ -178,7 +178,7 @@ up front:
 ```
 
 Query words: `#tag`, `@ident`, `label:<key or name>`, `set:<name>`, `status:ok|stale|ambiguous|detached`,
-`has:note`, `has:tags`; anything else matches the text, name or note.
+`has:note`, `has:tags`, `has:zk`; anything else matches the text, name or note.
 
 `<leader>md` lists annotations that are **stale** (their text was rewritten),
 **ambiguous** (the text appears more than once) or **detached** (the text is gone). For each
@@ -196,7 +196,9 @@ names for them), each with its text, line numbers, tags and note, plus a **Detac
 for annotations whose text is gone. Inside a project it suggests
 `<root>/.earmark/export/<project>-<path-of-file>.md` (`export/` is gitignored). Set
 `export.group_by` to `'position'`, `'tag'` or `'time'`, or `export.format` to a function
-`(list, ctx) -> lines` to write your own body. `:Earmark color #rrggbb` (or `reset`)
+`(list, ctx) -> lines` to write your own body. An annotation with a zk note gets a
+`→ [title](path)` line, where the path is the note's place in the notebook.
+`:Earmark color #rrggbb` (or `reset`)
 recolours the label under the cursor in this file only.
 
 ### Indicators
@@ -225,7 +227,7 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -273,7 +275,13 @@ require('earmark').setup({
   color_names = true, -- false, or function(hex) -> name|nil
   color_adapt = true, -- shift colours to suit a light (or any other) colour scheme
   export = { group_by = 'label', include_detached = true, format = nil },
-  zk = { dir = nil, open = true },
+  zk = {
+    cmd = 'zk',
+    notebook = nil, -- default: the nearest .zk above the file, then $ZK_NOTEBOOK_DIR
+    dir = nil, -- notebook subfolder for new notes, or function(ctx) -> subfolder
+    template = nil, -- your own zk template (gets the body and --extra fields)
+    open = true, -- open a new note in a split
+  },
   note = {
     layout = 'float', -- 'float' | 'split'
     width = 0.6, max_width = 100, -- fraction of the window, and a column cap
@@ -434,20 +442,78 @@ em.pick({ scope = 'project', query = '#todo' })
 em.hover.show() ; em.hover.hide()
 em.statusline({ hl = 'MiniStatuslineFileinfo' })  -- hl: the section it sits in
 em.on('Note', function(data) print(data.buf, data.action, vim.inspect(data.ids)) end)
+em.zk.promote(buf, a.id, { open = false }, function(err, path) end)  -- see zk below
+em.zk.notebook(buf)         -- the notebook's path, or nil and the reason
+em.zk.path(a, buf)          -- absolute path of the annotation's note, or nil
 ```
 
 Events: `User EarmarkChanged` for every change, plus a specific `User Earmark<Action>`
 (`EarmarkAdd`, `EarmarkUpdate`, `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`,
-`EarmarkNote`, `EarmarkLoad`), all with `data = { buf, action, ids }`. `em.on(name, fn)` is
+`EarmarkNote`, `EarmarkLoad`, `EarmarkZk`), all with `data = { buf, action, ids }`. `em.on(name, fn)` is
 shorthand for those autocmds. Anything not listed here is internal and may change.
 
 ### zk
 
-With [zk-nvim](https://github.com/zk-org/zk-nvim) installed, `<leader>mz` turns the annotation
-under the cursor into a zk note: the annotated text as a quote, the annotation's note, and a
-link back to the line. The note is titled after the note's first line (else the label name),
-created in the project's notebook (`zk.dir` picks a subdirectory) and opened in a split
-(`zk.open = false` to stay). The annotation keeps its note; the hover shows `↗ zk`.
+earmark can turn an annotation into a note in a [zk](https://github.com/zk-org/zk) notebook.
+It runs the `zk` program itself, so all you need is zk (Arch: `sudo pacman -S zk`) and a
+notebook (`zk init`). zk-nvim is not required.
+
+- **`<leader>mz`** on an annotation makes a note with the annotated text as a quote, the
+  annotation's note, and a `[source](…#L12)` link back to the line. The note is titled
+  after the first line of the annotation's note, else the start of the quoted text, and
+  opens in a split (`zk.open = false` to stay). The annotation keeps its own note and
+  remembers the zk note; the hover shows `↗ zk <file name>`.
+- **Press it again** and the note opens (or the cursor goes to the window already showing
+  it), so you never get a second note by accident. If the note's file is gone, earmark
+  asks whether to make a new one or unlink it. `:Earmark zk new` makes a new note anyway.
+- **Same text, same label:** after promoting, earmark offers to link the other annotations
+  in the file with the same text and label (made by `<leader>mo`, say) to the same note.
+- **`:Earmark zk link`** attaches a note that already exists, picked from `zk list`.
+- **`:Earmark zk pick`** lists the project's annotations that have a note; `<CR>` opens the
+  note. The query word `has:zk` does the same in any picker or `:Earmark qf`.
+- **In a note**, `<leader>mz` with nothing under the cursor (or `:Earmark zk sources`) lists
+  the annotations linked to it. zk's own backlinks find the source files too, through the
+  `[source]` link.
+
+The note starts with frontmatter that earmark writes, so zk indexes its title and tags:
+
+```yaml
+---
+title: "Why does the fox run?"
+tags: ["npc", "todo"]        # the label's name, then the annotation's tags
+earmark:
+  id: "…"
+  set: "vivid"
+  key: "3"
+  label: "NPC"
+  source: "notes/chapter-1.md"   # inside the notebook; absolute when outside it
+  line: 12                        # left out when the annotation is detached
+---
+```
+
+The `[source]` link is relative to the note's folder, so it works wherever the note goes
+in the notebook. A file outside the notebook gets an absolute link. The annotation stores
+the note's path relative to the notebook, so the project can move or be cloned elsewhere.
+
+Which notebook: `zk.notebook` if you set it, else the nearest folder with a `.zk` above the
+file, else `$ZK_NOTEBOOK_DIR`. Options:
+
+- `zk.dir`: the notebook subfolder for new notes. It can be a function that gets
+  `{ buf, annotation, value, label, notebook, source }` and returns a folder, e.g. one
+  folder per label: `dir = function(ctx) return 'people/' .. ctx.label:lower() end`.
+- `zk.template`: one of your own zk templates instead of earmark's. It gets the body only
+  (quote, note, source link) and `--extra id=…,set=…,key=…,line=…`; earmark writes no
+  frontmatter then, so your template decides it.
+- `zk.cmd`: the zk program, if it isn't `zk` on your `PATH`.
+
+**The notebook as the project.** `.zk` is one of `root_markers`, so a notebook is also an
+earmark project: annotations on notes go in `<notebook>/.earmark/`, which zk ignores. A
+`.earmark` folder nearer to the file wins over the notebook (`.earmark` comes first in
+`root_markers`), so don't create one inside the notebook unless you mean to start a
+separate project there.
+
+`:checkhealth earmark` shows whether zk is installed, its version, and the notebook for
+the current file.
 
 ## FAQ
 
