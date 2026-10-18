@@ -121,6 +121,13 @@ T['a long quote is cut to 60 characters for the title'] = function()
   eq(child.lua_get('vim.fn.strchars(_G.runs[1].argv[10])'), 59) -- 60, trailing space trimmed
 end
 
+T['tags and mentions in the note stay out of the title'] = function()
+  h.open()
+  fake()
+  child.lua('require("earmark").zk.promote(0, _G.anno({ 0, 4 }, { 0, 9 }, "Quote him exactly. #quote @mayor"))')
+  eq(child.lua_get('_G.runs[1].argv[10]'), 'Quote him exactly.')
+end
+
 T['a detached annotation links to the file without a line'] = function()
   h.open()
   fake()

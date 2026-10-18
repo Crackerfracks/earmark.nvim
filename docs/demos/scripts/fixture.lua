@@ -9,6 +9,9 @@ assert(repo and base, 'usage: fixture.lua <repo> <dir>')
 vim.fn.delete(base, 'rf')
 vim.fn.mkdir(base .. '/proj/.earmark/sets', 'p')
 vim.fn.mkdir(base .. '/proj/notes', 'p')
+-- the project is also a zk notebook (for the zk clip); notes are named after their title
+vim.fn.mkdir(base .. '/proj/.zk', 'p')
+vim.fn.writefile({ '[note]', 'filename = "{{slug title}}"' }, base .. '/proj/.zk/config.toml')
 
 -- The init finds its own directory, so the project can be copied anywhere.
 vim.fn.writefile({

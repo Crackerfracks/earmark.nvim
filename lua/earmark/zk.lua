@@ -163,7 +163,9 @@ end
 --- The note's first line, else the start of the quote.
 function M.title_for(a)
   local t = a.note and a.note:match('^%s*#*%s*([^\n]+)')
-  t = t and vim.trim(t) or ''
+  -- #tags and @mentions go to the tags, not the title
+  t = t and vim.trim((' ' .. t):gsub('([^%w_&/#])#%a[%w_/%-%.]*', '%1'):gsub('([^%w_%.])@%w[%w_%-]*', '%1')
+    :gsub('%s+', ' ')) or ''
   if t == '' then
     t = vim.trim((a.quote or ''):gsub('%s+', ' '))
     if vim.fn.strchars(t) > 60 then t = vim.trim(vim.fn.strcharpart(t, 0, 60)) end

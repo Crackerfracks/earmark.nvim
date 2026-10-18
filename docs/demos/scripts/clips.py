@@ -411,6 +411,18 @@ def _(c):
     c.step('q', 'q closes', before=0)
 
 
+@clip('zk', '<leader>mz: turn an annotation into a zk note', file=ESSAY, cursor=(9, 2),
+      opts="{ zk = { dir = 'zk' } }")
+def _(c):
+    c.step(' mz', 'a zk note for "vague promise": the quote, your note and a link back to this line',
+           hold=4.0)
+    c.mark_still()
+    c.step('<C-w>p', 'back to the essay: the hover now shows the note (↗ zk)', before=0, hold=3.0)
+    c.step(' mz', 'again: the same note opens, no duplicate', hold=2.5)
+    c.step(' mz', 'inside the note: the annotations that link to it', hold=3.0)
+    c.step('<Esc>', 'close the list', before=0)
+
+
 @clip('tags', '<leader>mt: add or remove tags', file=ESSAY, cursor=(9, 2))
 def _(c):
     c.step(' mt', 'every tag you have used, to toggle on this annotation', hold=3.0)
