@@ -156,4 +156,18 @@ T['a float that you leave for an operator stays until the operator is done'] = f
   eq(child.lua_get('_G.gone'), 1)
 end
 
+T['the statusline shows a detached annotation without waiting for another key'] = function()
+  child.o.laststatus = 2
+  child.lua([[_G.stl = function() return require('earmark').statusline() end]])
+  child.o.statusline = '%{%v:lua.stl()%}'
+  h.open()
+  child.lua('require("earmark").annotate(0, { 0, 4 }, { 0, 9 }, { set = "vivid", label = "3" })')
+  h.cursor(1, 0)
+  child.type_keys('dd')
+  h.settle(400)
+  local lines = child.get_screenshot().text
+  local status = table.concat(lines[#lines - 1])
+  eq(status:find('⚠', 1, true) ~= nil, true)
+end
+
 return T

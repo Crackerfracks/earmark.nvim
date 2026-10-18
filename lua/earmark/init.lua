@@ -921,6 +921,8 @@ local function setup_autocmds()
     t:stop()
     t:start(config.options.debounce_ms, 0, vim.schedule_wrap(function()
       log.guard('on_change', buffer.on_change, ev.buf)
+      -- counts and statuses changed after the edit was drawn: show them in statuslines now
+      pcall(vim.cmd, 'redrawstatus!')
     end))
   end)
   au({ 'BufUnload' }, function(ev)
