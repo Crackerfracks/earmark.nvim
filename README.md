@@ -214,13 +214,14 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
 - Where annotations of **different labels** overlap, the overlap is drawn in the mix of their
   colours and underlined in the outer annotation's colour, so you see where each one starts
   and ends.
-- Where annotations of **the same label** are nested (`this is` with `is` marked again), the
-  inner part keeps the colour and gets an underline in the text colour; three levels deep
-  it's a double underline.
-- An annotation's **second label** is an undercurl in that label's colour; labels **3 and
-  up** show as small squares `■` right after the span (`#` when `vim.g.have_nerd_font` is
-  `false`).
-- **Stale** annotations (text rewritten) are underdashed; **ambiguous** ones underdotted.
+- Where annotations of **the same label** are nested (`this is` with `is` marked again), each
+  inner level is a deeper shade of the same colour, the way highlighter strokes darken where
+  they cross.
+- An annotation's **second label** is an undercurl in that label's colour. With more labels
+  the undercurl is cut into equal runs, one per extra label, so nothing is added to the line
+  (`overlap.extra = 'squares'` instead puts a small square `■` per label after the span).
+- **Stale** annotations (text rewritten) are drawn faded (most of the colour drained) and
+  underdashed; **ambiguous** ones are underdotted.
 
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
@@ -293,7 +294,7 @@ require('earmark').setup({
     identifiers = true, -- show @ident tags as [ident]
     show_empty = false,
   },
-  overlap = { style = 'blend' }, -- 'blend' | 'top'
+  overlap = { style = 'blend', extra = 'split' }, -- 'blend' | 'top'; 'split' | 'squares'
 })
 ```
 
@@ -500,8 +501,8 @@ Defaults that were decided overnight and are worth a second look:
 2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line (`@A`
    in the hover, where Markdown would hide brackets).
 3. Overlaps: mixed colours with the outer colour as underline; a second label is an
-   undercurl, labels 3 and up are small squares after the span (not a gradient or
-   interleave).
+   undercurl, and more labels split the undercurl into equal runs (nothing shifts the line);
+   nested levels of one label are deeper shades; stale marks are faded. Revised 2026-10-18.
 4. The hover header is the label colour as text (`▍ name`), not a filled bar.
 5. `<leader>mv` shows or hides tags and identifiers at the ends of lines (hidden at
    startup); pencils always show.

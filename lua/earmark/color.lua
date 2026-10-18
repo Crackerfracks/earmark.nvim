@@ -70,6 +70,13 @@ function M.oklch_to_hex(L, C, h)
   return M.rgb_to_hex(linear_to_srgb(r), linear_to_srgb(g), linear_to_srgb(b))
 end
 
+--- `hex` with its chroma scaled by `f` and its lightness moved by `dL` (OKLCH, hue kept).
+function M.shift(hex, f, dL)
+  local L, a, b = M.rgb_to_oklab(M.hex_to_rgb(hex))
+  local C = math.sqrt(a * a + b * b) * f
+  return M.oklch_to_hex(math.max(0.05, math.min(0.98, L + (dL or 0))), C, math.deg(math.atan2(b, a)))
+end
+
 --- OKLab mean of hex colours (the colour an overlap of them is drawn in).
 function M.mix(hexes)
   local L, a, b = 0, 0, 0

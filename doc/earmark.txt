@@ -218,11 +218,12 @@ text could be now (scored candidates), attach it to a selection, or erase.
 
 - Overlapping annotations of different labels: the mix of their colours,
   underlined in the outer annotation's colour.
-- Nested annotations of the same label: underlined in the text colour,
-  double underline three levels deep.
-- A second label: an undercurl in its colour. Labels 3 and up: small
-  squares after the span.
-- Stale: underdashed. Ambiguous: underdotted.
+- Nested annotations of the same label: each inner level a deeper shade of
+  the same colour.
+- A second label: an undercurl in its colour. More labels cut the undercurl
+  into equal runs, one per extra label (`overlap.extra = 'squares'`: small
+  squares after the span instead).
+- Stale: faded and underdashed. Ambiguous: underdotted.
 
 `overlap = { style = 'top' }` turns mixing off: the smallest span is on top.
 
@@ -279,7 +280,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
             max_width = 0.5, max_height = 0.5 },
   indicators = { mode = 'eol', tags = false, max_pencils = 3, identifiers = true,
                  show_empty = false },
-  overlap = { style = 'blend' },   -- or 'top'
+  overlap = { style = 'blend',     -- or 'top'
+              extra = 'split' },  -- or 'squares'
   export = { group_by = 'label', include_detached = true, format = nil },
   zk = { dir = nil, open = true },
   statusline = { digits = true, color_name = true },
