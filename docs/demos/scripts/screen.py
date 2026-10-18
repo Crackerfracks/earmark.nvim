@@ -13,6 +13,8 @@ p = argparse.ArgumentParser()
 p.add_argument('scene'); p.add_argument('out')
 p.add_argument('--size', default='90x14'); p.add_argument('--nvim', default='nvim')
 p.add_argument('--title', default='')
+p.add_argument('--keys', default='', help='keys typed after the scene (nvim_input notation); '
+               '"||" separates steps typed 300 ms apart')
 a = p.parse_args()
 W, H = map(int, a.size.split('x'))
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -46,11 +48,27 @@ def handle(name, args):
 
 nvim.ui_attach(W, H, rgb=True, ext_linegrid=True)
 nvim.exec_lua(open(a.scene).read())
-nvim.command('redraw!')
+# type the steps, let everything (scheduled UI) settle, then say when to stop listening
+nvim.exec_lua('''
+  local steps = ...
+  local function step(i)
+    if i > #steps then
+      vim.defer_fn(function()
+        vim.cmd('redraw!')
+        vim.defer_fn(function() vim.rpcnotify(0, 'screen_done') end, 50)
+      end, 400)
+      return
+    end
+    vim.api.nvim_input(steps[i])
+    vim.defer_fn(function() step(i + 1) end, 300)
+  end
+  step(1)
+''', [s for s in a.keys.split('||') if s])
 def on_notify(name, args):
     if name == 'redraw':
         for ev in args: handle(ev[0], ev[1:])
-        if any(ev[0] == 'flush' for ev in args): nvim.stop_loop()
+    elif name == 'screen_done':
+        nvim.stop_loop()
 nvim.run_loop(None, on_notify)
 
 def css(n): return '#%06x' % n

@@ -206,9 +206,19 @@ local function rows(P, width)
     local hint = l and l.text and l.text.prompt or 'add a short text (optional)'
     return { { { '  ' .. hint, 'Comment' } } }
   else
-    if #P.hist == 0 then
-      return { { { '  no names yet: type one', 'Comment' } } }
-    end
+    -- say plainly what is being named, in the label's colour, before any earlier names
+    local colors = buffer.get(P.src_buf) and buffer.get(P.src_buf).colors
+    local hex = sets.color(P.value, colors)
+    local cname = sets.color_name(P.value, colors)
+    out[#out + 1] = {
+      { '  ', 'NormalFloat' },
+      { swatch() .. ' ', hex and sets.fg_group(hex) or 'NormalFloat' },
+      { ('%s%s'):format(P.value.label, cname and (' ' .. cname) or ''), 'Special' },
+      { ': what does it mean?', 'NormalFloat' },
+    }
+    out[#out + 1] = { { ('  e.g. Claim, NPC. Used for every %s here.'):format(P.value.label), 'Comment' } }
+    if #P.hist == 0 then return out end
+    out[#out + 1] = { { '  earlier names:', 'Comment' } }
     for i = 1, math.min(#P.hist, max) do
       local h = P.hist[i]
       local selected = i == P.hist_i
@@ -227,7 +237,7 @@ end
 
 local function title(P)
   if P.stage == 'name' then
-    return (' earmark · %s · %s name '):format(P.value.set, P.value.label)
+    return (' Name label %s · %s '):format(P.value.label, P.value.set)
   end
   if P.stage == 'choice' or P.stage == 'text' then
     local l = sets.label(P.value)
