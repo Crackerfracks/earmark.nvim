@@ -15,6 +15,8 @@ end
 ---------------------------------------------------------------------------
 
 local pending -- value used by the next (or repeated) operator call
+local fresh = false -- the next operator call is a new annotation, not a `.` repeat
+local stack_choice -- 'add' | 'replace': the answer to the last "already labelled" question
 local want_prompt = false -- the next operator call (not a dot-repeat) opens the prompt
 -- Dot-repeat after the prompt: typing into the prompt buffer replaces Vim's repeat
 -- command, so the keys of the motion are recorded while the operator waits for it and the
@@ -97,19 +99,66 @@ local function key_name(action)
   return k or (':Earmark ' .. action)
 end
 
-local function apply(buf, spans, value)
+--- Annotations whose span is exactly one of `spans` and that don't have `value` yet.
+local function exact_hits(buf, spans, value)
+  local out = {}
+  for _, r in ipairs(spans) do
+    for _, h in ipairs(buffer.find(buf, r.s, r.e)) do
+      if vim.deep_equal(h.s, r.s) and vim.deep_equal(h.e, r.e) then
+        local has = false
+        for _, v in ipairs(h.a.values) do
+          if v.set == value.set and v.label == value.label and v.choice == value.choice then has = true end
+        end
+        if not has then out[#out + 1] = h end
+      end
+    end
+  end
+  return out
+end
+
+--- Annotate `spans` with `value`. On a span that already has an annotation, `how` decides:
+--- 'add' (default) adds `value` as another label, 'replace' changes its first label.
+local function apply(buf, spans, value, how, quiet)
+  buf = buf == 0 and api.nvim_get_current_buf() or buf
   local n, onto = 0, 0
   for _, r in ipairs(spans) do
-    local a, how = buffer.add(buf, r.s, r.e, value)
-    if a then n = n + 1 end
-    if how == 'added' then onto = onto + 1 end
+    local hit = how == 'replace' and exact_hits(buf, { r }, value)[1]
+    if hit then
+      local values = vim.deepcopy(hit.a.values)
+      values[1] = value
+      if buffer.set_values(buf, hit.a.id, values) then n = n + 1 end
+    else
+      local a, added = buffer.add(buf, r.s, r.e, value)
+      if a then n = n + 1 end
+      if added == 'added' then onto = onto + 1 end
+    end
   end
   if n > 0 then last_value = value end
-  if onto > 0 then
+  if onto > 0 and not quiet then
     notify(('added %s to the annotation already there (%s changes its label instead)'):format(
       buffer.display_name(buf, value), key_name('relabel')))
   end
   return n
+end
+
+--- Annotate `spans` with `value`, first asking what to do when a span already has an
+--- annotation (`prompt.confirm_stack`). A `.` repeat (`is_new` false) doesn't ask: it does
+--- what the last answer said.
+local function annotate(buf, spans, value, is_new)
+  buf = buf == 0 and api.nvim_get_current_buf() or buf
+  local hits = exact_hits(buf, spans, value)
+  if is_new and #hits == 0 then stack_choice = nil end
+  if #hits == 0 or not is_new or not config.options.prompt.confirm_stack then
+    return apply(buf, spans, value, stack_choice or 'add', stack_choice ~= nil)
+  end
+  vim.schedule(function()
+    if not api.nvim_buf_is_valid(buf) then return end
+    require('earmark.ui.stack_confirm').ask(buf, hits, value, function(how)
+      if not how then return notify('cancelled: nothing changed') end
+      stack_choice = how
+      apply(buf, spans, value, how, true)
+    end)
+  end)
 end
 
 --- Open the label prompt for spans of the current buffer; `on_value(value)` runs on accept.
@@ -156,7 +205,7 @@ local function replay_operator(o, spans, value)
   if replay then -- the replay didn't reach operatorfunc
     replay = nil
     if not ok then log.warn('replaying the operator failed') end
-    apply(api.nvim_get_current_buf(), spans, value)
+    annotate(api.nvim_get_current_buf(), spans, value, true)
   end
 end
 
@@ -169,11 +218,11 @@ function M.operatorfunc(motion)
   if replay then
     local want = replay
     replay = nil
-    apply(0, same_spans(spans, want) and spans or want, pending)
+    annotate(0, same_spans(spans, want) and spans or want, pending, true)
     return
   end
   if #spans == 0 then
-    want_prompt, op = false, nil
+    want_prompt, op, fresh = false, nil, false
     return notify('nothing to annotate there (no text)')
   end
   if want_prompt then
@@ -186,13 +235,15 @@ function M.operatorfunc(motion)
           replay_operator(o, spans, value)
         else
           pending = value
-          apply(api.nvim_get_current_buf(), spans, value)
+          annotate(api.nvim_get_current_buf(), spans, value, true)
         end
       end)
     end)
     return
   end
-  if pending then apply(0, spans, pending) end
+  local is_new = fresh
+  fresh = false
+  if pending then annotate(0, spans, pending, is_new) end
 end
 
 local opfunc = "v:lua.require'earmark'.operatorfunc"
@@ -204,7 +255,7 @@ function M.operator_expr(suffix)
   if vim.v.count > 0 then
     local value = value_for_count(vim.v.count)
     if not value then return '<Ignore>' end
-    pending, want_prompt = value, false
+    pending, want_prompt, fresh = value, false, true
     if not mode:match('^[vV\22]') and config.options.prompt.count_hint then
       -- the keys returned below haven't run yet: wait for the operator to start waiting
       api.nvim_create_autocmd('ModeChanged', {
@@ -217,7 +268,7 @@ function M.operator_expr(suffix)
       })
     end
   else
-    want_prompt = true
+    want_prompt, fresh = true, false
     op = {
       win = api.nvim_get_current_win(),
       cursor = api.nvim_win_get_cursor(0),
