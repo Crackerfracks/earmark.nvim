@@ -1,5 +1,6 @@
 local buffer = require('earmark.buffer')
 local config = require('earmark.config')
+local log = require('earmark.log')
 local sets = require('earmark.sets')
 
 local api = vim.api
@@ -14,20 +15,47 @@ end
 ---------------------------------------------------------------------------
 
 local pending -- value used by the next (or repeated) operator call
-local last_value -- most recently used value; the default when no count is given
+local want_prompt = false -- the next operator call (not a dot-repeat) opens the prompt
+-- Dot-repeat after the prompt: typing into the prompt buffer replaces Vim's repeat
+-- command, so the keys of the motion are recorded while the operator waits for it and the
+-- operator is replayed with the chosen label once the prompt closes.
+local capture_ns = api.nvim_create_namespace('earmark_capture')
+local op -- { win, cursor, visual, suffix, keys = {} } of the operator waiting for a motion
+local replay -- spans the replayed operator must cover
+local last_value -- most recently used value; preselected in the prompt
+local asked = {} -- [buf]["set/key"] = true once the prompt asked to name that label
 
 local function value_for_count(count)
-  if count and count > 0 then
-    local l = sets.resolve(count)
-    if not l then
-      notify(('no label %d in set "%s"'):format(count, sets.current), vim.log.levels.WARN)
-      return nil
-    end
-    return { set = sets.current, label = l.key }
+  local l = sets.resolve(count)
+  if not l then
+    notify(('no label %d in set "%s"'):format(count, sets.current), vim.log.levels.WARN)
+    return nil
   end
-  if last_value and sets.label(last_value) then return last_value end
+  return { set = sets.current, label = l.key }
+end
+
+local function first_key()
+  if last_value and last_value.set == sets.current and sets.label(last_value) then return last_value.label end
   local set = sets.by_name[sets.current]
-  return set and set.labels[1] and { set = sets.current, label = set.labels[1].key } or nil
+  return set and set.labels[1] and set.labels[1].key or nil
+end
+
+local function names()
+  return require('earmark.names')
+end
+
+--- Should the prompt go on to ask for a name after this label was chosen?
+local function should_name(buf)
+  return function(value)
+    local mode = config.options.prompt.ask_name
+    if mode == 'never' then return false end
+    if mode == 'always' then return true end
+    local key = value.set .. '/' .. value.label
+    asked[buf] = asked[buf] or {}
+    if asked[buf][key] or not sets.is_numbered(value.set) or names().known(buf, value) then return false end
+    asked[buf][key] = true
+    return true
+  end
 end
 
 --- Spans [{s, e}] covered by the last operator motion / visual selection.
@@ -59,15 +87,89 @@ local function region(motion)
   return { { s = s, e = e } }
 end
 
---- 'operatorfunc' target. Public so it can be referenced as v:lua.
-function M.operatorfunc(motion)
-  local value = pending
-  if not value then return end
+local function apply(buf, spans, value)
   local n = 0
-  for _, r in ipairs(region(motion)) do
-    if buffer.add(0, r.s, r.e, value) then n = n + 1 end
+  for _, r in ipairs(spans) do
+    if buffer.add(buf, r.s, r.e, value) then n = n + 1 end
   end
   if n > 0 then last_value = value end
+  return n
+end
+
+--- Open the label prompt for spans of the current buffer; `on_value(value)` runs on accept.
+local function prompt_for(spans, on_value, opts)
+  local buf, win = api.nvim_get_current_buf(), api.nvim_get_current_win()
+  opts = opts or {}
+  require('earmark.ui.prompt').open({
+    buf = buf,
+    win = win,
+    spans = spans,
+    set = opts.set,
+    first = opts.first or first_key(),
+    stage = opts.stage,
+    value = opts.value,
+    should_name = opts.stage ~= 'name' and should_name(buf) or nil,
+    on_accept = function(value, name)
+      if name ~= nil then names().save(buf, value, name) end
+      on_value(value, name)
+    end,
+  })
+end
+
+local function same_spans(a, b)
+  if #a ~= #b then return false end
+  for i = 1, #a do
+    if not vim.deep_equal(a[i], b[i]) then return false end
+  end
+  return true
+end
+
+--- Re-run the operator with `value`, so `.` repeats it (see `op` above). Falls back to
+--- annotating `spans` directly if the replay can't reproduce them.
+local function replay_operator(o, spans, value)
+  pending, want_prompt, replay = value, false, spans
+  local ok = pcall(function()
+    api.nvim_set_current_win(o.win)
+    api.nvim_win_set_cursor(o.win, o.cursor)
+    vim.o.operatorfunc = "v:lua.require'earmark'.operatorfunc"
+    local keys = o.visual and 'gvg@' or ('g@' .. (o.suffix or '') .. table.concat(o.keys))
+    api.nvim_feedkeys(keys, o.visual and 'nx' or 'mx', false)
+  end)
+  if replay then -- the replay didn't reach operatorfunc
+    replay = nil
+    if not ok then log.warn('replaying the operator failed') end
+    apply(api.nvim_get_current_buf(), spans, value)
+  end
+end
+
+--- 'operatorfunc' target. Public so it can be referenced as v:lua.
+function M.operatorfunc(motion)
+  vim.on_key(nil, capture_ns)
+  local spans = region(motion)
+  if replay then
+    local want = replay
+    replay = nil
+    apply(0, same_spans(spans, want) and spans or want, pending)
+    return
+  end
+  if #spans == 0 then return end
+  if want_prompt then
+    want_prompt = false
+    local o = op
+    op = nil
+    vim.schedule(function()
+      prompt_for(spans, function(value)
+        if o then
+          replay_operator(o, spans, value)
+        else
+          pending = value
+          apply(api.nvim_get_current_buf(), spans, value)
+        end
+      end)
+    end)
+    return
+  end
+  if pending then apply(0, spans, pending) end
 end
 
 local opfunc = "v:lua.require'earmark'.operatorfunc"
@@ -75,11 +177,42 @@ local opfunc = "v:lua.require'earmark'.operatorfunc"
 --- Expression mapping for the operator. In Normal mode the count picks the label and is
 --- dropped before g@, so it doesn't multiply the motion.
 function M.operator_expr(suffix)
-  local value = value_for_count(vim.v.count)
-  if not value then return '<Ignore>' end
-  pending = value
-  vim.o.operatorfunc = opfunc
   local mode = api.nvim_get_mode().mode
+  if vim.v.count > 0 then
+    local value = value_for_count(vim.v.count)
+    if not value then return '<Ignore>' end
+    pending, want_prompt = value, false
+  else
+    want_prompt = true
+    op = {
+      win = api.nvim_get_current_win(),
+      cursor = api.nvim_win_get_cursor(0),
+      visual = mode:match('^[vV\22]') ~= nil,
+      suffix = suffix,
+      keys = {},
+      -- the keys this mapping returns (<Esc>g@ + suffix) come through on_key first
+      skip = 3 + #(suffix or ''),
+    }
+    local o = op
+    vim.on_key(function(_, typed)
+      if o.skip > 0 then
+        o.skip = o.skip - 1
+        return
+      end
+      if not api.nvim_get_mode().mode:match('^no') then
+        -- the operator was cancelled before a motion completed
+        vim.schedule(function()
+          if op == o then
+            op, want_prompt = nil, false
+            vim.on_key(nil, capture_ns)
+          end
+        end)
+        return
+      end
+      if typed and typed ~= '' then o.keys[#o.keys + 1] = typed end
+    end, capture_ns)
+  end
+  vim.o.operatorfunc = opfunc
   if mode:match('^[vV\22]') then return 'g@' end
   return '<Esc>g@' .. (suffix or '')
 end
@@ -149,6 +282,55 @@ function M.prev()
   jump(-1)
 end
 
+local function hit_under_cursor()
+  local hits = buffer.find(0, cursor_pos())
+  local n = math.max(1, vim.v.count)
+  if #hits == 0 then
+    notify('nothing under the cursor')
+    return nil
+  end
+  return hits[math.min(n, #hits)]
+end
+
+--- Change the label (first value) of the annotation under the cursor.
+function M.relabel()
+  local h = hit_under_cursor()
+  if not h then return end
+  local buf = api.nvim_get_current_buf()
+  local v1 = h.a.values[1]
+  prompt_for({ { s = h.s, e = h.e } }, function(value)
+    local values = vim.deepcopy(h.a.values)
+    values[1] = value
+    buffer.set_values(buf, h.a.id, values)
+    last_value = value
+  end, { set = v1.set, first = v1.label })
+end
+
+--- Add another label (value) to the annotation under the cursor.
+function M.add_value()
+  local h = hit_under_cursor()
+  if not h then return end
+  local buf = api.nvim_get_current_buf()
+  prompt_for({ { s = h.s, e = h.e } }, function(value)
+    local values = vim.deepcopy(h.a.values)
+    for _, v in ipairs(values) do
+      if v.set == value.set and v.label == value.label then return notify('it already has that label') end
+    end
+    values[#values + 1] = value
+    buffer.set_values(buf, h.a.id, values)
+  end)
+end
+
+--- Name the label of the annotation under the cursor for this file (empty clears it).
+function M.rename()
+  local h = hit_under_cursor()
+  if not h then return end
+  local v1 = h.a.values[1]
+  prompt_for({ { s = h.s, e = h.e } }, function(value, name)
+    if name == '' then notify('name cleared for ' .. value.set .. '·' .. value.label) end
+  end, { stage = 'name', value = v1 })
+end
+
 function M.cycle_set(step)
   local name = sets.cycle(step)
   if name then notify('label set: ' .. name) end
@@ -205,7 +387,6 @@ end
 ---------------------------------------------------------------------------
 
 local actions = require('earmark.actions')
-local log = require('earmark.log')
 
 local function register_actions()
   local A = actions.register
@@ -223,6 +404,9 @@ local function register_actions()
   A({ name = 'prev', desc = 'previous annotation', modes = { n = M.prev } })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
   A({ name = 'info', desc = 'annotation info', modes = { n = M.info } })
+  A({ name = 'relabel', desc = 'change label', modes = { n = M.relabel } })
+  A({ name = 'add_value', desc = 'add a label', modes = { n = M.add_value } })
+  A({ name = 'rename', desc = 'name label for this file', modes = { n = M.rename } })
   A({
     name = 'set',
     desc = 'switch label set',

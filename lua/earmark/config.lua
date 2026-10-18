@@ -28,6 +28,20 @@ M.defaults = {
     prev = '<leader>mN',
     cycle_set = '<leader>ms',
     info = '<leader>mi',
+    relabel = '<leader>ml', -- change the label of the annotation under the cursor
+    add_value = '<leader>ma', -- add another label to it
+    rename = '<leader>mr', -- name its label for this file (empty input clears)
+  },
+  -- The label prompt (`gh` without a count).
+  prompt = {
+    width = 44,
+    max_rows = 8, -- candidate rows shown under the input
+    -- Ask for a name after choosing a label: 'first_use' (a numbered label with no name in
+    -- this file, the project or your history), 'always', or 'never'.
+    ask_name = 'first_use',
+  },
+  ui = {
+    border = 'rounded', -- any 'winborder' value
   },
   -- Buffers with these 'buftype's are never annotated.
   ignore_buftypes = { 'terminal', 'prompt', 'quickfix' },

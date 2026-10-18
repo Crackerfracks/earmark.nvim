@@ -35,6 +35,10 @@ local function group_for(set, key)
 end
 
 local function define(name, spec)
+  if spec.fg then
+    vim.api.nvim_set_hl(0, name, { fg = spec.fg, bold = spec.bold or nil })
+    return
+  end
   local hl = { bg = spec.bg, fg = color.contrast_fg(spec.bg) }
   if spec.style == 'stale' then
     hl.underdashed, hl.sp = true, hl.fg
@@ -81,7 +85,13 @@ local function normalize(name, spec)
       }
     end
   end
-  local set = { name = name, labels = labels, by_key = {}, desc = type(spec) == 'table' and spec.desc or nil }
+  local set = {
+    name = name,
+    labels = labels,
+    by_key = {},
+    desc = type(spec) == 'table' and spec.desc or nil,
+    numbered = type(spec) == 'string' or spec.generate == 'numbered',
+  }
   for _, l in ipairs(labels) do
     l.group = group_for(name, l.key)
     set.by_key[l.key] = l
@@ -147,6 +157,91 @@ function M.group(value, colors, status)
   end
   if style then name = name .. (style == 'stale' and 'Stale' or 'Ambiguous') end
   return ensure(name, bg, style)
+end
+
+--- Foreground-only group in colour `hex` (indicators, swatches, names in floats).
+function M.fg_group(hex, bold)
+  local name = 'EarmarkFg' .. hex:gsub('#', '') .. (bold and 'Bold' or '')
+  local g = groups[name]
+  if not g then
+    groups[name] = { fg = hex, bold = bold }
+    define(name, groups[name])
+  end
+  return name
+end
+
+--- Whether a set's labels are generated numbers (1-99).
+function M.is_numbered(set_name)
+  local set = M.by_name[set_name]
+  return set and set.numbered or false
+end
+
+--- Candidate labels of a set for what was typed in the label prompt, best first.
+--- ctx.name(label) -> display name (doc names); ctx.uses[key] -> times used in the doc;
+--- ctx.first -> key to list first when nothing is typed.
+--- Digits pick keys: the exact key first, then (numbered sets) the other shades of its
+--- family (3 -> 13, 23 ... 93), then keys starting with the digits. Anything else is
+--- fuzzy-matched against "key name".
+function M.resolve_query(set_name, text, ctx)
+  local set = M.by_name[set_name]
+  if not set then return {} end
+  ctx = ctx or {}
+  local uses = ctx.uses or {}
+  local function name_of(l)
+    return ctx.name and ctx.name(l) or l.name
+  end
+  text = vim.trim(text or '')
+  local out, seen = {}, {}
+  local function add(l)
+    if l and not seen[l.key] then
+      seen[l.key] = true
+      out[#out + 1] = l
+    end
+  end
+  if text == '' then
+    add(set.by_key[ctx.first or ''])
+    local used = vim.tbl_filter(function(l)
+      return (uses[l.key] or 0) > 0
+    end, set.labels)
+    table.sort(used, function(a, b)
+      return uses[a.key] > uses[b.key]
+    end)
+    for _, l in ipairs(used) do
+      add(l)
+    end
+    for _, l in ipairs(set.labels) do
+      add(l)
+    end
+    return out
+  end
+  if text:match('^%d+$') then
+    add(set.by_key[text])
+    local n = tonumber(text)
+    if set.numbered and n >= 1 and n <= 99 then
+      local fam = ((n - 1) % 10) + 1
+      for k = fam, 99, 10 do
+        add(set.by_key[tostring(k)])
+      end
+    end
+    for _, l in ipairs(set.labels) do
+      if vim.startswith(l.key, text) then add(l) end
+    end
+    if #out > 0 or set.numbered then return out end
+  end
+  for _, l in ipairs(set.labels) do
+    if l.key == text then add(l) end
+  end
+  for _, l in ipairs(set.labels) do
+    if vim.startswith(l.key:lower(), text:lower()) then add(l) end
+  end
+  local hay = {}
+  for _, l in ipairs(set.labels) do
+    hay[#hay + 1] = { text = l.key .. ' ' .. name_of(l), label = l }
+  end
+  for _, m in ipairs(vim.fn.matchfuzzy(hay, text, { key = 'text' })) do
+    add(m.label)
+  end
+  return out
 end
 
 --- Display name of a label (without doc names): its name, or "set·key".

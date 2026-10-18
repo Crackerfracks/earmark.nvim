@@ -59,7 +59,7 @@ T['operator']['count picks the label and does not multiply the motion'] = functi
   eq(texts(), { { text = 'quick', label = '3', status = 'ok' } })
 end
 
-T['operator']['no count reuses the last label; dot-repeat repeats it'] = function()
+T['operator']['no count preselects the last label in the prompt; dot-repeat repeats it'] = function()
   open()
   set_cursor(1, 4)
   child.type_keys('7ghiw')
@@ -67,6 +67,8 @@ T['operator']['no count reuses the last label; dot-repeat repeats it'] = functio
   child.type_keys('.')
   set_cursor(2, 2)
   child.type_keys('ghiw')
+  child.type_keys('<CR>') -- accept the preselected label 7
+  child.type_keys('<CR>') -- skip naming it
   eq(texts(), {
     { text = 'quick', label = '7', status = 'ok' },
     { text = 'brown', label = '7', status = 'ok' },
