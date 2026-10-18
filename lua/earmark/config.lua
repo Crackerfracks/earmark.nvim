@@ -65,6 +65,10 @@ M.defaults = {
     ask_name = 'first_use',
     -- After a count (3gh), show which label it picked while you choose the motion.
     count_hint = true,
+    -- When a label goes onto text with an annotation of exactly that span, ask: a adds it as
+    -- another label, r replaces the label, Esc cancels. `.` repeats your answer without asking.
+    -- false: always add, without asking.
+    confirm_stack = true,
   },
   ui = {
     border = 'rounded', -- any 'winborder' value

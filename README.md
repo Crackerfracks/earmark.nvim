@@ -134,8 +134,10 @@ empty name clears it for this file. With `prompt.ask_name = 'first_use'` (defaul
 asked to name a numbered label the first time you use it in a project; `'always'` and
 `'never'` do what they say.
 
-Annotating exactly the same span again with another label adds that label to it, so both
-show as an overlap (`<leader>ml` changes the label instead); with a label it already has,
+Annotating exactly the same span again with another label asks first: <kbd>a</kbd> (or
+<kbd>Enter</kbd>) adds the label to it, so both show as an overlap; <kbd>r</kbd> replaces its
+label (as `<leader>ml` does); <kbd>Esc</kbd> cancels. `.` repeats your answer without asking.
+`prompt.confirm_stack = false` always adds, without asking. With a label it already has,
 nothing changes.
 
 ### Notes and the hover
@@ -254,6 +256,7 @@ require('earmark').setup({
     max_rows = 8, -- candidate rows shown
     ask_name = 'first_use', -- 'first_use' | 'always' | 'never'
     count_hint = true, -- after 3gh, show which label the count picked
+    confirm_stack = true, -- ask before labelling a span that's already labelled
   },
   ui = { border = 'rounded' },
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
@@ -500,7 +503,8 @@ Defaults that were decided overnight and are worth a second look:
 11. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default.
 12. `.earmark/names.json` (label names for the project) is committed, not ignored.
 13. Another label on exactly the same span is added to the annotation (an overlap) rather
-    than replacing its label; `<leader>ml` replaces.
+    than replacing its label; `<leader>ml` replaces. Confirmed 2026-10-18, with a question
+    first (a add / r replace / Esc cancel, `prompt.confirm_stack`).
 
 Smaller behaviours to confirm: an annotation re-placed by a close fuzzy match (one typo) stays
 "ok" rather than "stale"; `<leader>mg` accepts the new text as the annotation's text;

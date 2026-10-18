@@ -153,8 +153,10 @@ name stage is pre-filled from what you called that label before: in this
 file, elsewhere in the project, then anywhere. `prompt.ask_name` decides when
 you are asked: "first_use" (default), "always" or "never".
 
-Annotating exactly the same span again with another label adds that label to
-it (both show); `<leader>ml` changes the label instead.
+Annotating exactly the same span again with another label asks first: `a` (or
+<CR>) adds that label to it (both show), `r` replaces its label (as
+`<leader>ml` does), <Esc> cancels. `.` repeats the answer without asking.
+`prompt.confirm_stack = false` always adds, without asking.
 
                                                        *earmark-color-names*
 Colour names: every colour is named after the nearest of about 700 names from
@@ -261,7 +263,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
   context = 32,            -- bytes of surrounding text kept on each side
   keys = { ... },          -- |earmark-keys|; false disables all
   prompt = { width = 44, max_rows = 8, ask_name = 'first_use',
-             count_hint = true },
+             count_hint = true, confirm_stack = true },
   ui = { border = 'rounded' },
   note = { layout = 'float', width = 0.6, max_width = 100,
            height = { min = 5, max = 0.5 }, winblend = 0 },
