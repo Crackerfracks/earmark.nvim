@@ -109,6 +109,7 @@ local function prompt_for(spans, on_value, opts)
     first = opts.first or first_key(),
     stage = opts.stage,
     value = opts.value,
+    existing = opts.existing,
     should_name = opts.stage ~= 'name' and should_name(buf) or nil,
     on_accept = function(value, name)
       if name ~= nil then names().save(buf, value, name) end
@@ -288,7 +289,7 @@ function M.relabel()
     values[1] = value
     buffer.set_values(buf, h.a.id, values)
     last_value = value
-  end, { set = v1.set, first = v1.label })
+  end, { set = v1.set, first = v1.label, existing = vim.list_slice(h.a.values, 2) })
 end
 
 --- Add another label (value) to the annotation under the cursor.
@@ -303,7 +304,7 @@ function M.add_value()
     end
     values[#values + 1] = value
     buffer.set_values(buf, h.a.id, values)
-  end)
+  end, { existing = h.a.values })
 end
 
 --- Name the label of the annotation under the cursor for this file (empty clears it).
@@ -318,8 +319,40 @@ end
 
 function M.cycle_set(step)
   local name = sets.cycle(step)
-  if name then notify('label set: ' .. name) end
+  if name then require('earmark.ui.set_popup').show(name) end
 end
+
+--- `<leader>mS`: choose the label set from a list.
+function M.pick_set()
+  vim.ui.select(sets.order, {
+    prompt = 'Label set',
+    format_item = function(name)
+      local set = sets.by_name[name]
+      local src = set.source and (' · ' .. vim.fn.fnamemodify(set.source, ':~:.')) or ''
+      return ('%s%s  (%d labels%s)'):format(name, name == sets.current and ' ✓' or '', #set.labels, src)
+    end,
+  }, function(name)
+    if name then M.use_set(name) end
+  end)
+end
+
+--- Load the label sets of the project `buf` belongs to (and pick up edited set files).
+local function sync_sets(buf)
+  local root
+  if vim.bo[buf].buftype == '' and api.nvim_buf_get_name(buf) ~= '' then
+    local doc = require('earmark.store').doc(buf)
+    root = doc and doc.root
+  end
+  local switch = root and root ~= sets.root
+  if switch or sets.files_changed(config.options) then
+    sets.load(config.options, switch and root or nil)
+    for b in pairs(buffer.state) do
+      buffer.rerender(b)
+    end
+    return true
+  end
+end
+M._sync_sets = sync_sets
 
 function M.use_set(name)
   if not sets.by_name[name] then return notify('no label set "' .. tostring(name) .. '"', vim.log.levels.WARN) end
@@ -540,8 +573,9 @@ function M.at(buf, pos)
   return buffer.find(buf or 0, pos or cursor_pos())
 end
 
+--- Statusline component: `%#..#` string for the current buffer (see README).
 function M.statusline()
-  return sets.current or ''
+  return require('earmark.ui.statusline').render(last_value)
 end
 
 ---------------------------------------------------------------------------
@@ -576,6 +610,7 @@ local function register_actions()
   A({ name = 'scratch', desc = 'reopen a scratch buffer', cmd = M.scratch })
   A({ name = 'check', desc = 'list annotations with their placement', cmd = M.check })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
+  A({ name = 'pick_set', desc = 'choose the label set', modes = { n = M.pick_set } })
   A({ name = 'peek', desc = 'show annotation details', modes = { n = M.peek } })
   A({ name = 'note', desc = 'open/close note', modes = { n = M.note } })
   A({ name = 'toggle_hover', desc = 'automatic hover on/off', modes = { n = M.toggle_hover } })
@@ -599,6 +634,10 @@ local function register_actions()
     name = 'reload',
     desc = 'reload annotations from disk',
     cmd = function()
+      sets.load(config.options, nil)
+      for b in pairs(buffer.state) do
+        buffer.rerender(b)
+      end
       buffer.reload(api.nvim_get_current_buf())
     end,
   })
@@ -618,6 +657,7 @@ local function setup_autocmds()
     api.nvim_create_autocmd(ev, vim.tbl_extend('force', { group = group, callback = guard(name, cb) }, opts or {}))
   end
   au('BufReadPost', function(ev)
+    sync_sets(ev.buf)
     if buffer.state[ev.buf] then
       buffer.on_change(ev.buf) -- :e! / external reload: repair from the in-memory snapshot
     else
@@ -658,10 +698,17 @@ local function setup_autocmds()
       buffer.save(buf)
     end
   end)
+  au({ 'BufEnter', 'FocusGained' }, function(ev)
+    sync_sets(ev.buf)
+  end)
+  au('BufWritePost', function()
+    sync_sets(api.nvim_get_current_buf())
+  end, { pattern = { '*/earmark/sets/*.lua', '*/earmark/sets/*.json', '*/.earmark/sets/*.lua', '*/.earmark/sets/*.json' } })
   require('earmark.ui.hover').setup(au)
   au('ColorScheme', function()
     sets.apply_highlights()
     require('earmark.render').apply_highlights()
+    require('earmark.ui.statusline').apply_highlights()
   end)
 end
 

@@ -16,7 +16,7 @@ text, even while the text keeps changing.
 - **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
   with the repo or notebook.
 
-Status: early. Project label-set files, export and the zk bridge are next.
+Status: early. Export, colour overrides and the zk bridge are next.
 See the plan in `~/Documents/Everything Neovim-related/NumHi Context Corner/2026-10 Rebuild Plan.md`.
 
 Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
@@ -48,7 +48,8 @@ Requires Neovim 0.11+ (uses `getregionpos`, `vim.fs.root`, `vim.fs.relpath`).
 | `<leader>mp` / `<leader>mP` | pick an annotation in this file / in the whole project |
 | `<leader>md` | review the annotations whose text changed or disappeared |
 | `<leader>mD` | compare an annotation's original text with what it says now |
-| `<leader>ms` | switch to the next label set |
+| `<leader>ms` | switch to the next label set (a popup shows its colours) |
+| `<leader>mS` | choose the label set from a list |
 | `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
 | `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
 | `<leader>mh` | automatic hover on / off |
@@ -146,7 +147,7 @@ saved). `indicators.show_empty = true` adds a dot for annotations without a note
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|cycle_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -160,6 +161,7 @@ Defaults:
 require('earmark').setup({
   -- Strings are generated numbered palettes; named tables are your own sets.
   sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  sets_dir = nil, -- your set files; default ~/.config/earmark/sets, false to skip
   current = nil, -- set a count resolves against (default: first)
   root_markers = { '.earmark', '.zk', '.git' },
   storage_dir = vim.fn.stdpath('data') .. '/earmark', -- files outside any root, scratch buffers
@@ -169,7 +171,7 @@ require('earmark').setup({
     operator = 'gh', line = 'ghh',
     erase = '<leader>mx', clear = '<leader>mX', restore = '<leader>mu',
     next = '<leader>mn', prev = '<leader>mN',
-    cycle_set = '<leader>ms', peek = '<leader>mi',
+    cycle_set = '<leader>ms', pick_set = '<leader>mS', peek = '<leader>mi',
     note = '<leader>mm', toggle_hover = '<leader>mh',
     tags = '<leader>mt', toggle_indicators = '<leader>mv',
     next_same = '<leader>m]', prev_same = '<leader>m[', jump = '<leader>mj',
@@ -183,6 +185,7 @@ require('earmark').setup({
   },
   ui = { border = 'rounded' },
   picker = 'auto', -- 'auto' | 'snacks' | 'telescope' | 'select'
+  statusline = { digits = true },
   note = {
     layout = 'float', -- 'float' | 'split'
     width = 0.6, max_width = 100, -- fraction of the window, and a column cap
@@ -221,9 +224,63 @@ sets = {
 
 A count resolves to the label whose key is that number, else to the label at that position.
 
+### Label set files
+
+Sets can also live in files, one set per file, named after the file:
+
+- your own: `~/.config/earmark/sets/*.lua` or `*.json` (`sets_dir` changes or disables this);
+- a project's: `<root>/.earmark/sets/*.lua` or `*.json`, loaded when you open a file in that
+  project. A project's set replaces a set of the same name.
+
+Files are re-read when you save them in Neovim or come back to Neovim after editing them
+elsewhere. Project Lua files run only after you trust them (`:trust`, Neovim's
+`vim.secure`); JSON files never run code. `:Earmark log` lists files that failed to load.
+
+Labels can ask for more than a colour, which suits rubrics and surveys:
+
+```lua
+-- <root>/.earmark/sets/review.lua
+return {
+  labels = {
+    { key = 'q1', name = 'Accuracy', color = '#e06c75',
+      -- asked after the label; a choice may have its own colour
+      choices = { { key = 'a', name = 'Correct' }, { key = 'b', name = 'Minor issue', color = '#e5c07b' }, 'Major issue' },
+      -- a line of text, only for these choices
+      text = { when = { 'b', 'c' }, prompt = 'What is wrong?' } },
+    -- only offered once the annotation has q1 = b or c (others show why they're unavailable)
+    { key = 'q1.1', name = 'Severity reason', requires = { q1 = { 'b', 'c' } } },
+    { key = 'q2', name = 'Tone' },
+  },
+}
+```
+
+A value then reads `Accuracy · b Minor issue`, and the hover shows its text. `choices` can
+also be a map: `{ a = 'Correct', b = 'Minor issue' }`.
+
+### Statusline
+
+`require('earmark').statusline()` returns a statusline string (empty in buffers earmark
+doesn't track): a swatch and the label the next `gh` uses, the number of annotations and
+notes, `⚠` with detached/ambiguous ones, and for numbered sets the digits `1234567890` in
+their colours.
+
+```lua
+-- mini.statusline, inside your content.active function
+local earmark = require('earmark').statusline()
+return MiniStatusline.combine_groups({
+  { hl = mode_hl, strings = { mode } },
+  { hl = 'MiniStatuslineFilename', strings = { filename } },
+  '%=',
+  { hl = 'MiniStatuslineFileinfo', strings = { earmark, fileinfo } },
+})
+
+-- lualine
+sections = { lualine_x = { function() return require('earmark').statusline() end } }
+```
+
 `<Plug>` mappings: `(earmark-operator)`, `(earmark-line)`, `(earmark-erase)`,
 `(earmark-clear)`, `(earmark-restore)`, `(earmark-next)`, `(earmark-prev)`,
-`(earmark-cycle-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
+`(earmark-cycle-set)`, `(earmark-pick-set)`, `(earmark-peek)`, `(earmark-note)`, `(earmark-toggle-hover)`,
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
 `(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-diff)`, `(earmark-relabel)`, `(earmark-add-value)`,
 `(earmark-rename)`.

@@ -94,6 +94,12 @@ function M.content(buf, hits)
       col = col + #p[1]
     end
     lines[#lines + 1] = line
+    for _, v in ipairs(a.values) do
+      if v.text then
+        lines[#lines + 1] = '› ' .. v.text
+        hl(#lines - 1, 0, #'›', fg1)
+      end
+    end
     if a.status == 'stale' and a.original_quote ~= a.quote then
       local q = (a.original_quote or ''):gsub('%s+', ' ')
       if vim.fn.strchars(q) > 60 then q = vim.fn.strcharpart(q, 0, 59) .. '…' end

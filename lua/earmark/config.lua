@@ -6,6 +6,9 @@ M.defaults = {
   --   feedback = { labels = { { key = 'c', name = 'contradiction', color = '#e06c75' }, ... } }
   --   mine     = { generate = 'numbered', palette = { L = 0.7, C = 0.15, h0 = 200, zig = 0.04 } }
   sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  -- Directory of your own set files (one set per *.lua / *.json file), false to skip.
+  -- Default: ~/.config/earmark/sets. Projects add <root>/.earmark/sets.
+  sets_dir = nil,
   -- Set used when a count picks a label. Defaults to the first set.
   current = nil,
   -- Where annotations are stored: `<root>/.earmark/` for the nearest root found by these
@@ -27,6 +30,7 @@ M.defaults = {
     next = '<leader>mn',
     prev = '<leader>mN',
     cycle_set = '<leader>ms',
+    pick_set = '<leader>mS',
     peek = '<leader>mi', -- show the hover now and enter it (scroll, q closes)
     note = '<leader>mm', -- open/close the note of the annotation under the cursor
     toggle_hover = '<leader>mh',
@@ -85,6 +89,9 @@ M.defaults = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
     -- outer one's colour. 'top': the smallest span simply covers the others.
     style = 'blend',
+  },
+  statusline = {
+    digits = true, -- numbered sets: show 1234567890 in the set's colours
   },
   -- 'auto' (snacks, then telescope, then vim.ui.select), 'snacks', 'telescope' or 'select'
   picker = 'auto',
