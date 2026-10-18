@@ -54,6 +54,21 @@ T['shows tags, identifiers, pencil and the note'] = function()
   eq(vim.list_slice(hv.lines, 2), { 'check this #todo @A', 'second line' })
 end
 
+T['a second label gets its own line, so the header stays short'] = function()
+  h.open()
+  local id = mark({ 0, 4 }, { 0, 9 }, '3')
+  child.lua([[require('earmark.buffer').set_values(0, ..., { { set = 'vivid', label = '3' }, { set = 'vivid', label = '5' } })
+    require('earmark.buffer').set_note(0, ..., 'n')]], { id })
+  h.cursor(1, 0)
+  move('5l')
+  local hv = hover()
+  eq(hv.lines[1]:find('vivid·3', 1, true) ~= nil, true)
+  eq(hv.lines[1]:find('vivid·5', 1, true), nil)
+  eq(hv.lines[2]:sub(1, 2), '+ ')
+  eq(hv.lines[2]:find('vivid·5', 1, true) ~= nil, true)
+  eq(hv.lines[3], 'n')
+end
+
 T['stays while moving within the span, closes when leaving it'] = function()
   h.open()
   local id = mark({ 0, 4 }, { 0, 9 })

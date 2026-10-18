@@ -60,17 +60,17 @@ function M.content(buf, hits)
   for i, h in ipairs(hits) do
     local a = h.a
     if i > 1 then lines[#lines + 1] = '' end
-    local row = #lines
     local parts = {} -- { text, group }
     if #hits > 1 then parts[#parts + 1] = { (CIRCLED[i] or (i .. '.')) .. ' ' } end
-    for k, v in ipairs(a.values) do
+    -- one label per line: the first heads the entry, the others follow it as "+ name"
+    local function label_parts(v, into)
       local hex = sets.color(v, S and S.colors)
       local g = hex and sets.fg_group(hex, true) or 'EarmarkUnknown'
-      if k > 1 then parts[#parts + 1] = { '  + ' } end
-      parts[#parts + 1] = { (nerd() and '▍' or '|') .. buffer.display_name(buf, v), g }
+      into[#into + 1] = { (nerd() and '▍' or '|') .. buffer.display_name(buf, v), g }
       local cname = sets.color_name(v, S and S.colors)
-      parts[#parts + 1] = { '  ' .. v.set .. '·' .. v.label .. (cname and (' · ' .. cname) or ''), 'Comment' }
+      into[#into + 1] = { '  ' .. v.set .. '·' .. v.label .. (cname and (' · ' .. cname) or ''), 'Comment' }
     end
+    label_parts(a.values[1], parts)
     local hex1 = sets.color(a.values[1], S and S.colors)
     local fg1 = hex1 and sets.fg_group(hex1) or 'Normal'
     local tag_list, idents = tags.of(a)
@@ -91,13 +91,21 @@ function M.content(buf, hits)
     elseif a.status == 'ambiguous' then
       parts[#parts + 1] = { '  ? ambiguous', 'DiagnosticInfo' }
     end
-    local line, col = '', 0
-    for _, p in ipairs(parts) do
-      line = line .. p[1]
-      if p[2] then hl(row, col, col + #p[1], p[2]) end
-      col = col + #p[1]
+    local function emit(ps)
+      local line, col, r = '', 0, #lines
+      for _, p in ipairs(ps) do
+        line = line .. p[1]
+        if p[2] then hl(r, col, col + #p[1], p[2]) end
+        col = col + #p[1]
+      end
+      lines[#lines + 1] = line
     end
-    lines[#lines + 1] = line
+    emit(parts)
+    for k = 2, #a.values do
+      local more = { { #hits > 1 and '    + ' or '+ ' } }
+      label_parts(a.values[k], more)
+      emit(more)
+    end
     for _, v in ipairs(a.values) do
       if v.text then
         lines[#lines + 1] = '› ' .. v.text
