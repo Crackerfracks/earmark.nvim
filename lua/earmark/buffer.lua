@@ -703,13 +703,18 @@ function M.names(buf)
   return S and S.names or {}
 end
 
---- Display name of a value in a buffer: the doc's name for it, else the label's name.
+--- Display name of a value in a buffer: the doc's name for it, else the label's name,
+--- followed by its choice ("Accuracy · b Minor issue").
 function M.display_name(buf, value)
   local S = M.get(buf, { no_create = true })
   local n = S and S.names[label_key(value)]
-  if n then return n end
-  local l = sets.label(value)
-  return l and l.name or value.label
+  if not n then
+    local l = sets.label(value)
+    n = l and l.name or value.label
+  end
+  local c = sets.choice(value)
+  if c then n = n .. ' · ' .. c.key .. ' ' .. c.name end
+  return n
 end
 
 --- Move an annotation to [s, e) (re-attaching a detached one). Its original text is kept,

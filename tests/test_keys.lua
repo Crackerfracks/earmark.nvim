@@ -35,6 +35,9 @@ T['every subcommand runs on an empty buffer without error'] = function()
     local actions = require('earmark.actions')
     local out = {}
     vim.notify = function() end
+    -- the built-in select/input wait for typed input
+    vim.ui.select = function(_, _, cb) cb(nil) end
+    vim.ui.input = function(_, cb) cb(nil) end
     for _, name in ipairs(actions.commands()) do
       local ok, err = pcall(vim.cmd, 'Earmark ' .. name)
       if not ok then out[#out + 1] = name .. ': ' .. tostring(err) end

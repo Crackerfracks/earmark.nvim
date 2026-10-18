@@ -55,9 +55,59 @@ end
 
 --- The value the prompt would apply right now (label stage: the selected candidate).
 local function current_value(P)
-  if P.stage == 'name' then return P.value end
+  if P.stage == 'name' or P.stage == 'text' then return P.value end
+  if P.stage == 'choice' then
+    local c = P.choices[P.sel]
+    return c and vim.tbl_extend('force', P.value, { choice = c.key }) or P.value
+  end
   local l = P.cands[P.sel]
   return l and { set = P.set, label = l.key } or nil
+end
+
+--- Label candidates for the typed text: allowed ones first, then those whose `requires`
+--- the annotation doesn't meet (shown dimmed, with the reason).
+local function label_cands(P, text)
+  local all = sets.resolve_query(P.set, text, P.ctx)
+  local ok, blocked = {}, {}
+  P.disabled = {}
+  for _, l in ipairs(all) do
+    local allowed, why = sets.allowed(P.set, l, P.existing)
+    if allowed then
+      ok[#ok + 1] = l
+    else
+      P.disabled[l.key] = why
+      blocked[#blocked + 1] = l
+    end
+  end
+  return vim.list_extend(ok, blocked)
+end
+
+--- Choices of the chosen label matching the typed text.
+local function choice_cands(P, text)
+  local l = sets.label(P.value)
+  local list = l and l.choices or {}
+  text = vim.trim(text or '')
+  if text == '' then return list end
+  local out, seen = {}, {}
+  local function add(c)
+    if c and not seen[c.key] then
+      seen[c.key] = true
+      out[#out + 1] = c
+    end
+  end
+  for _, c in ipairs(list) do
+    if c.key == text then add(c) end
+  end
+  for _, c in ipairs(list) do
+    if vim.startswith(c.key:lower(), text:lower()) then add(c) end
+  end
+  local hay = vim.tbl_map(function(c)
+    return { text = c.key .. ' ' .. c.name, c = c }
+  end, list)
+  for _, m in ipairs(vim.fn.matchfuzzy(hay, text, { key = 'text' })) do
+    add(m.c)
+  end
+  return out
 end
 
 local function clear_preview(P)
@@ -105,7 +155,15 @@ local function rows(P, width)
       local left = (selected and '▸ ' or '  ')
       local key = l.key .. string.rep(' ', keyw - vim.fn.strdisplaywidth(l.key))
       local shown_name = name ~= l.key and name or ''
-      local right = n > 0 and ('used %d×'):format(n) or ''
+      local why = P.disabled and P.disabled[l.key]
+      local right = why or (n > 0 and ('used %d×'):format(n) or '')
+      if why then
+        hl = function()
+          return selected and { 'Comment', 'CursorLine' } or 'Comment'
+        end
+      elseif l.choices then
+        shown_name = shown_name .. ' …'
+      end
       local used = vim.fn.strdisplaywidth(left) + 2 + keyw + 2 + vim.fn.strdisplaywidth(shown_name)
       local pad = math.max(1, width - used - vim.fn.strdisplaywidth(right))
       local color = sets.color(value, buffer.get(P.src_buf) and buffer.get(P.src_buf).colors)
@@ -117,6 +175,33 @@ local function rows(P, width)
         { string.rep(' ', pad) .. right, hl('Comment') },
       }
     end
+  elseif P.stage == 'choice' then
+    local l = sets.label(P.value)
+    if #P.choices == 0 then
+      return { { { ('  no choice "%s" for %s'):format(vim.trim(input_text(P)), l and l.name or '?'), 'Comment' } } }
+    end
+    local first = math.max(1, math.min(P.sel - max + 1, #P.choices - max + 1))
+    for i = first, math.min(#P.choices, first + max - 1) do
+      local c = P.choices[i]
+      local selected = i == P.sel
+      local function hl(g)
+        return selected and { g, 'CursorLine' } or g
+      end
+      local hex = sets.color(vim.tbl_extend('force', P.value, { choice = c.key }), buffer.get(P.src_buf) and buffer.get(P.src_buf).colors)
+      local line = {
+        { selected and '▸ ' or '  ', hl(selected and 'Special' or 'NormalFloat') },
+        { swatch() .. ' ', hl(hex and sets.fg_group(hex) or 'NormalFloat') },
+        { c.key .. '  ', hl(selected and 'Special' or 'NormalFloat') },
+        { c.name, hl('NormalFloat') },
+      }
+      local used = 2 + 2 + vim.fn.strdisplaywidth(c.key) + 2 + vim.fn.strdisplaywidth(c.name)
+      line[#line + 1] = { string.rep(' ', math.max(0, width - used)), hl('NormalFloat') }
+      out[#out + 1] = line
+    end
+  elseif P.stage == 'text' then
+    local l = sets.label(P.value)
+    local hint = l and l.text and l.text.prompt or 'add a short text (optional)'
+    return { { { '  ' .. hint, 'Comment' } } }
   else
     if #P.hist == 0 then
       return { { { '  no names yet: type one', 'Comment' } } }
@@ -141,6 +226,12 @@ local function title(P)
   if P.stage == 'name' then
     return (' earmark · %s · %s name '):format(P.value.set, P.value.label)
   end
+  if P.stage == 'choice' or P.stage == 'text' then
+    local l = sets.label(P.value)
+    local name = buffer.display_name(P.src_buf, { set = P.value.set, label = P.value.label })
+    local c = P.stage == 'text' and P.value.choice and (' · ' .. P.value.choice) or ''
+    return (' earmark · %s%s%s '):format(name, c, l and '' or '')
+  end
   return (' earmark · %s '):format(P.set)
 end
 
@@ -148,13 +239,15 @@ local function footer(P)
   if P.stage == 'name' then
     return P.back_ok and ' ⏎ save name  ↑↓ history  ⇤ back  ␛ cancel ' or ' ⏎ save name  ↑↓ history  ␛ cancel '
   end
+  if P.stage == 'choice' then return ' ⏎ choose  ^n/^p  ⇤ back  ␛ cancel ' end
+  if P.stage == 'text' then return ' ⏎ apply  ⇤ back  ␛ cancel ' end
   return ' ⏎ apply  ⇥ name  ^n/^p  ^s set  ␛ cancel '
 end
 
 local function render(P)
   if not (api.nvim_buf_is_valid(P.buf) and api.nvim_win_is_valid(P.win)) then return end
   local value = current_value(P)
-  if P.stage == 'label' then preview(P, value) end
+  if P.stage == 'label' or P.stage == 'choice' then preview(P, value) end
   local width = math.min(opts_().width, math.max(20, api.nvim_win_get_width(P.src_win) - 4))
   local vl = rows(P, width)
   api.nvim_buf_clear_namespace(P.buf, M.ns, 0, -1)
@@ -216,17 +309,59 @@ local function enter_name_stage(P, value, back_ok)
   render(P)
 end
 
+local function finish_value(P, value)
+  if P.should_name and P.should_name(value) then
+    P.asked_name = true
+    return enter_name_stage(P, value, true)
+  end
+  finish(P, function()
+    P.on_accept(value, nil)
+  end)
+end
+
+local function enter_text_stage(P, value)
+  P.prev_stage = P.stage
+  if P.stage == 'label' then P.label_text = input_text(P) end
+  P.stage, P.value = 'text', value
+  preview(P, value)
+  set_input(P, value.text or '')
+  render(P)
+end
+
+--- After a label (and its choice): ask for text when the label wants it, else finish.
+local function after_value(P, value)
+  local l = sets.label(value)
+  if l and l.text and (not l.text.when or vim.tbl_contains(l.text.when, value.choice)) then
+    return enter_text_stage(P, value)
+  end
+  finish_value(P, value)
+end
+
+local function enter_choice_stage(P, value)
+  P.label_text = input_text(P)
+  P.stage, P.value = 'choice', value
+  P.choices = choice_cands(P, '')
+  P.sel = 1
+  set_input(P, '')
+  render(P)
+end
+
 local function accept(P)
   if P.stage == 'label' then
     local value = current_value(P)
     if not value then return end
-    if P.should_name and P.should_name(value) then
-      P.asked_name = true
-      return enter_name_stage(P, value, true)
-    end
-    finish(P, function()
-      P.on_accept(value, nil)
-    end)
+    if P.disabled and P.disabled[value.label] then return end
+    local l = sets.label(value)
+    if l and l.choices then return enter_choice_stage(P, value) end
+    after_value(P, value)
+  elseif P.stage == 'choice' then
+    local c = P.choices[P.sel]
+    if not c then return end
+    after_value(P, vim.tbl_extend('force', P.value, { choice = c.key }))
+  elseif P.stage == 'text' then
+    local text = vim.trim(input_text(P))
+    local value = vim.tbl_extend('force', P.value, { text = text ~= '' and text or nil })
+    finish_value(P, value)
   else
     local name = vim.trim(input_text(P))
     local value = P.value
@@ -240,6 +375,11 @@ local function move(P, step)
   if P.stage == 'label' then
     if #P.cands == 0 then return end
     P.sel = ((P.sel - 1 + step) % #P.cands) + 1
+  elseif P.stage == 'choice' then
+    if #P.choices == 0 then return end
+    P.sel = ((P.sel - 1 + step) % #P.choices) + 1
+  elseif P.stage == 'text' then
+    return
   else
     if #P.hist == 0 then return end
     P.hist_i = ((P.hist_i - 1 + step) % #P.hist) + 1
@@ -262,9 +402,12 @@ local function on_text_changed(P)
   if P.moving then
     P.moving = false
   elseif P.stage == 'label' then
-    P.cands = sets.resolve_query(P.set, input_text(P), P.ctx)
+    P.cands = label_cands(P, input_text(P))
     P.sel = 1
-  else
+  elseif P.stage == 'choice' then
+    P.choices = choice_cands(P, input_text(P))
+    P.sel = 1
+  elseif P.stage == 'name' then
     P.hist_i = 0
   end
   render(P)
@@ -285,12 +428,28 @@ local function keymaps(P)
       accept(P)
     end
   end)
+  local function back_to_label()
+    P.stage = 'label'
+    set_input(P, P.label_text or '')
+    P.cands = label_cands(P, P.label_text or '')
+    render(P)
+  end
   map({ 'i', 'n' }, '<S-Tab>', function()
-    if P.stage == 'name' and P.back_ok then
-      P.stage = 'label'
-      set_input(P, P.label_text or '')
-      P.cands = sets.resolve_query(P.set, P.label_text or '', P.ctx)
-      render(P)
+    if P.stage == 'choice' then
+      back_to_label()
+    elseif P.stage == 'text' then
+      local l = sets.label(P.value)
+      if l and l.choices then
+        P.stage = 'choice'
+        P.value = { set = P.value.set, label = P.value.label }
+        set_input(P, '')
+        P.choices = choice_cands(P, '')
+        render(P)
+      else
+        back_to_label()
+      end
+    elseif P.stage == 'name' and P.back_ok then
+      back_to_label()
     end
   end)
   for _, k in ipairs({ '<C-n>', '<Down>' }) do
@@ -316,7 +475,7 @@ local function keymaps(P)
       if n == P.set then idx = i end
     end
     P.set = sets.order[(idx % #sets.order) + 1]
-    P.cands = sets.resolve_query(P.set, input_text(P), P.ctx)
+    P.cands = label_cands(P, input_text(P))
     P.sel = 1
     render(P)
   end)
@@ -333,6 +492,7 @@ end
 --- opts.set: label set to start in; opts.first: key preselected when nothing is typed;
 --- opts.stage: 'label' (default) or 'name' (opts.value then names that label);
 --- opts.should_name(value) -> true to go on to the name stage after a label is chosen;
+--- opts.existing: values already on the annotation (for labels' `requires`);
 --- opts.on_accept(value, name|nil); opts.on_cancel().
 function M.open(opts)
   if M.active then close(M.active) end
@@ -350,6 +510,8 @@ function M.open(opts)
     on_accept = opts.on_accept,
     on_cancel = opts.on_cancel,
     should_name = opts.should_name,
+    existing = opts.existing or {},
+    choices = {},
   }
   P.uses = uses_in(P.src_buf)
   P.ctx = {
@@ -363,7 +525,7 @@ function M.open(opts)
       return buffer.display_name(P.src_buf, { set = P.set, label = l.key })
     end,
   }
-  P.cands = sets.resolve_query(P.set, '', P.ctx)
+  P.cands = label_cands(P, '')
   P.buf = api.nvim_create_buf(false, true)
   vim.bo[P.buf].bufhidden = 'wipe'
   vim.bo[P.buf].swapfile = false
