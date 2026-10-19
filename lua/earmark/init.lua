@@ -481,8 +481,10 @@ local function sync_sets(buf)
     end
     loaded = true
   end
-  if buf == api.nvim_get_current_buf() and sets.focus(buf) then
-    pcall(vim.cmd, 'redrawstatus!')
+  if buf == api.nvim_get_current_buf() then
+    local changed, swapped = sets.focus(buf)
+    if swapped and not loaded then buffer.rerender(buf) end
+    if changed or swapped then pcall(vim.cmd, 'redrawstatus!') end
   end
   return loaded
 end
@@ -947,6 +949,7 @@ end
 --- label's name (a numbered label's is its key), then its choice ("Accuracy · b Minor").
 function M.display_name(buf, value)
   value = value_of(value)
+  sets.pick_variants(sets.path_of(buf))
   return value and buffer.display_name(buf or 0, value) or nil
 end
 
