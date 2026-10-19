@@ -373,7 +373,10 @@ Sets can also live in files, one set per file, named after the file:
 
 Files are re-read when you save them in Neovim or come back to Neovim after editing them
 elsewhere. Project Lua files run only after you trust them (`:trust`, Neovim's
-`vim.secure`); JSON files never run code. `:Earmark log` lists files that failed to load.
+`vim.secure`); JSON files never run code. `:Earmark log` lists files that failed to load,
+and problems in the ones that did (a colour that isn't `#rrggbb` or `#rgb` gets a palette
+colour instead); a broken set never stops the others loading. A label repeated with the
+same key replaces the earlier one.
 
 Labels can ask for more than a colour, which suits rubrics and surveys:
 
@@ -436,15 +439,15 @@ folder as the file, or in a folder above it inside the project:
 
 - `plan.earmark-set.json` applies to `plan.md`, `plan.html` and so on (any `plan.*`). Give
   `"files": ["drafts/*.md"]` to choose other files; the globs are relative to the set file's
-  folder.
+  folder (`**/*.md`, `../drafts/*.md` and absolute paths work too; `[]` is no file).
 - Opening one of those files switches to its set; leaving it switches back to the set you
   used before. `"auto": false` only lists it first instead.
 - The set is listed (`<leader>mS`, `<leader>ms`, Ctrl-s in the prompt) only in its files, so
   sets made for one review don't fill up the list everywhere else.
 - `"extends": "feedback"` starts from the feedback labels; a label with the same key
   replaces one of them.
-- After the `"expires"` day the set is no longer offered. Annotations made with it keep
-  their colours.
+- After the `"expires"` day (`YYYY-MM-DD`) the set is no longer offered. Annotations made
+  with it keep their colours.
 - A set for some files never replaces a general set of the same name.
 
 ### Statusline
@@ -593,7 +596,10 @@ file, else `$ZK_NOTEBOOK_DIR`. Options:
 
 - `zk.dir`: the notebook subfolder for new notes. It can be a function that gets
   `{ buf, annotation, value, label, notebook, source }` and returns a folder, e.g. one
-  folder per label: `dir = function(ctx) return 'people/' .. ctx.label:lower() end`.
+  folder per label: `dir = function(ctx) return 'people/' .. ctx.label:lower() end`. A
+  folder outside the notebook is refused.
+- With a zk `filename = "{{slug title}}"`, two notes with the same title would share a file:
+  zk hands back the existing note, and earmark says so instead of linking to it.
 - `zk.template`: one of your own zk templates instead of earmark's. It gets the body only
   (quote, note, source link) and `--extra id=…,set=…,key=…,line=…`; earmark writes no
   frontmatter then, so your template decides it.

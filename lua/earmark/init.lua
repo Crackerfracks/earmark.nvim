@@ -1156,12 +1156,15 @@ function M.setup(opts)
       pcall(wk.add, vim.list_extend(spec, require('earmark.ui.keys').which_key_spec()))
     end)
   end
-  -- Buffers loaded before setup (e.g. the file Neovim was started with).
+  -- Buffers loaded before setup (e.g. the file Neovim was started with), with the sets of
+  -- their project and folder; the current buffer's project last, so its sets are loaded.
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and api.nvim_buf_get_name(buf) ~= '' then
+      sync_sets(buf)
       buffer.get(buf)
     end
   end
+  sync_sets(api.nvim_get_current_buf())
 end
 
 return M

@@ -36,19 +36,22 @@ local function item(buf, x, with_name, dest_dir)
   local head = {}
   if with_name then
     head[#head + 1] = '**' .. table.concat(vim.tbl_map(function(v)
-      return buffer.display_name(buf, v)
+      return one_line(buffer.display_name(buf, v))
     end, a.values), ' + ') .. '**'
   end
   head[#head + 1] = ('**"%s"**'):format(one_line(a.quote))
   head[#head + 1] = '(' .. lines_ref(x) .. ')'
-  local t = tag_text(a)
+  local t = one_line(tag_text(a))
   if t ~= '' then head[#head + 1] = t end
   local out = { '- ' .. table.concat(head, ' ') }
+  -- every element one line: a newline inside one would be a NUL in the written file
   for _, v in ipairs(a.values) do
-    if v.text then out[#out + 1] = '  > ' .. v.text end
+    for _, l in ipairs(v.text and vim.split(v.text, '\r?\n') or {}) do
+      out[#out + 1] = '  > ' .. l
+    end
   end
   if a.note then
-    for _, l in ipairs(vim.split(a.note, '\n')) do
+    for _, l in ipairs(vim.split(a.note, '\r?\n')) do
       out[#out + 1] = l == '' and '' or ('  ' .. l)
     end
   end
@@ -79,7 +82,7 @@ function M.markdown(buf, opts)
   local function section(title, xs, with_name)
     if #xs == 0 then return end
     if title then
-      out[#out + 1] = '## ' .. title
+      out[#out + 1] = '## ' .. one_line(title)
     end
     for _, x in ipairs(xs) do
       vim.list_extend(out, item(buf, x, with_name, opts.dest and vim.fs.dirname(opts.dest)))
@@ -90,8 +93,15 @@ function M.markdown(buf, opts)
   if by == 'position' then
     section(nil, placed, true)
   elseif by == 'time' then
+    -- table.sort is not stable: made in the same second, keep the text order
+    local at = {}
+    for i, x in ipairs(placed) do
+      at[x] = i
+    end
     table.sort(placed, function(x, y)
-      return (x.annotation.created or 0) < (y.annotation.created or 0)
+      local cx, cy = x.annotation.created or 0, y.annotation.created or 0
+      if cx ~= cy then return cx < cy end
+      return at[x] < at[y]
     end)
     section(nil, placed, true)
   elseif by == 'tag' then
@@ -131,7 +141,7 @@ function M.markdown(buf, opts)
     out[#out + 1] = '## Detached'
     for _, x in ipairs(detached) do
       local a = x.annotation
-      local parts = { ('"%s"'):format(one_line(a.original_quote)), buffer.display_name(buf, a.values[1]) }
+      local parts = { ('"%s"'):format(one_line(a.original_quote)), one_line(buffer.display_name(buf, a.values[1])) }
       if a.note then parts[#parts + 1] = one_line(a.note:match('[^\n]*')) end
       out[#out + 1] = '- ' .. table.concat(parts, ' — ')
     end
@@ -155,7 +165,8 @@ local function path_for(buf, where)
     return vim.fn.fnamemodify(name, ':p:r') .. '.earmark.md'
   end
   if doc and doc.kind == 'file' and doc.root then
-    local rel = doc.key:gsub('/', '-'):gsub('%.[^.]*$', '')
+    -- the extension of the file, not of a folder (notes/v1.2/README)
+    local rel = doc.key:gsub('%.[^./]*$', ''):gsub('/', '-')
     return ('%s/.earmark/export/%s-%s.md'):format(doc.root, vim.fn.fnamemodify(doc.root, ':t'), rel)
   end
   local base = name ~= '' and vim.fn.fnamemodify(name, ':t:r') or ('scratch-' .. os.date('%Y%m%d-%H%M%S'))
@@ -164,6 +175,7 @@ end
 
 --- Every place an export of `buf` goes (`export.location`, one or a list), first one first.
 function M.paths(buf)
+  if buf == 0 then buf = api.nvim_get_current_buf() end
   local loc = config.options.export.location or 'project'
   if type(loc) ~= 'table' then loc = { loc } end
   local out, seen = {}, {}
@@ -192,7 +204,9 @@ function M.run(buf)
     if not path or vim.trim(path) == '' then return end
     path = vim.fs.normalize(vim.fn.fnamemodify(vim.trim(path), ':p'))
     local function write(p)
-      vim.fn.mkdir(vim.fs.dirname(p), 'p')
+      -- mkdir fails too where a file is in the way
+      local ok, err = pcall(vim.fn.mkdir, vim.fs.dirname(p), 'p')
+      if not ok then return ok, err end
       return pcall(vim.fn.writefile, M.markdown(buf, { dest = p }), p)
     end
     local ok, err = write(path)
