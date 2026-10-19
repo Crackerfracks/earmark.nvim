@@ -18,6 +18,9 @@ local M = {}
 --- @field name string
 --- @field labels earmark.Label[]
 --- @field by_key table<string, earmark.Label>
+--- @field tags string[]?  tags offered first in <leader>mt
+--- @field files {[1]: string, [2]: string}[]?  { dir, glob }: the set is listed only for these files
+--- @field expires string?  YYYY-MM-DD: after that day the set is no longer listed
 
 M.order = {} --- @type string[]
 M.by_name = {} --- @type table<string, earmark.Set>
@@ -120,6 +123,7 @@ local function normalize(name, spec)
         choices = choices,
         text = type(text) == 'table' and text or nil,
         requires = type(l.requires) == 'table' and l.requires or nil,
+        tags = type(l.tags) == 'table' and #l.tags > 0 and l.tags or nil,
       }
       if choices then
         labels[i].choice_by_key = {}
@@ -136,6 +140,10 @@ local function normalize(name, spec)
     desc = type(spec) == 'table' and spec.desc or nil,
     numbered = type(spec) == 'string' or spec.generate == 'numbered',
     source = type(spec) == 'table' and spec._source or nil,
+    tags = type(spec) == 'table' and type(spec.tags) == 'table' and #spec.tags > 0 and spec.tags or nil,
+    files = type(spec) == 'table' and spec._files or nil,
+    expires = type(spec) == 'table' and type(spec.expires) == 'string' and spec.expires or nil,
+    auto = not (type(spec) == 'table' and spec.auto == false),
   }
   for _, l in ipairs(labels) do
     l.group = group_for(name, l.key)
@@ -189,11 +197,17 @@ end
 
 --- Sets defined in a directory: { { name, spec } ... }. A file returning one set (it has
 --- `labels` or `generate`) is named after the file (or its `name`); a file returning a
---- table of sets defines each.
-local function dir_sets(dir, trusted)
+--- table of sets defines each. `sidecar`: only `*.earmark-set.json` files, each a set for
+--- the files next to it (see M.sidecar_dirs).
+local function dir_sets(dir, trusted, sidecar)
   local out = {}
-  local files = vim.fn.globpath(dir, '*.lua', false, true)
-  vim.list_extend(files, vim.fn.globpath(dir, '*.json', false, true))
+  local files
+  if sidecar then
+    files = M.sidecars(dir)
+  else
+    files = vim.fn.globpath(dir, '*.lua', false, true)
+    vim.list_extend(files, vim.fn.globpath(dir, '*.json', false, true))
+  end
   table.sort(files)
   for _, path in ipairs(files) do
     M.files[path] = mtime(path)
@@ -203,8 +217,13 @@ local function dir_sets(dir, trusted)
       M.errors[path] = tostring(err or 'did not return a table')
     else
       local base = vim.fn.fnamemodify(path, ':t:r')
-      if t.labels or t.generate then
-        t._source = path
+      if sidecar then
+        base = vim.fn.fnamemodify(path, ':t'):sub(1, -#M.SIDECAR - 1)
+        -- by default a sidecar is for the files named like it: plan.earmark-set.json -> plan.*
+        if t.files == nil then t.files = { base, base .. '.*' } end
+      end
+      if t.labels or t.generate or t.extends then
+        t._source, t._dir, t._stem = path, sidecar and dir or nil, base
         out[#out + 1] = { t.name or base, t }
       else
         for k, v in pairs(t) do
@@ -219,14 +238,78 @@ local function dir_sets(dir, trusted)
   return out
 end
 
+M.SIDECAR = '.earmark-set.json'
+--- Directories whose `*.earmark-set.json` files are loaded (those of files you opened).
+M.sidecar_dirs = {}
+--- The set in use before a file's own set took over (restored when you leave that file).
+M.general = nil
+
+--- `spec` with the labels of the set it `extends` first (its own labels with the same key
+--- replace them).
+local function extended(spec)
+  local base = M.by_name[spec.extends]
+  if not base then
+    M.errors[spec._source or spec.extends] = ('extends unknown set "%s"'):format(spec.extends)
+    return spec
+  end
+  local out = vim.tbl_extend('force', {}, spec)
+  out.extends, out.generate = nil, nil
+  local labels, at = {}, {}
+  for _, l in ipairs(base.labels) do
+    labels[#labels + 1] = {
+      key = l.key, name = l.name, desc = l.desc, color = l.color, color_name = l.color_name,
+      choices = l.choices, text = l.text, requires = l.requires, tags = l.tags,
+    }
+    at[l.key] = #labels
+  end
+  for i, l in ipairs(spec.labels or {}) do
+    if type(l) == 'string' then l = { name = l } end
+    local key = tostring(l.key or (#base.labels + i))
+    l = vim.tbl_extend('force', {}, l, { key = key })
+    if at[key] then labels[at[key]] = l else labels[#labels + 1] = l end
+  end
+  out.labels = labels
+  if base.tags and not spec.tags then out.tags = base.tags end
+  return out
+end
+
+--- `files` globs of a scoped set as { dir, glob } pairs: the glob matches paths relative
+--- to dir (so the characters of the folder's own name never count as glob syntax).
+local function scope_globs(files, dir)
+  if type(files) == 'string' then files = { files } end
+  if type(files) ~= 'table' or not dir then return nil end
+  local out = {}
+  for _, g in ipairs(files) do
+    if type(g) == 'string' and g ~= '' then
+      if g:sub(1, 1) == '~' then g = vim.env.HOME .. g:sub(2) end
+      if g:sub(1, 1) == '/' then
+        out[#out + 1] = { '/', g:sub(2) }
+      else
+        out[#out + 1] = { vim.fs.normalize(dir), g }
+      end
+    end
+  end
+  return #out > 0 and out or nil
+end
+
 --- Build the sets: your setup() sets, then your set files, then the project's set files
---- (a later definition of the same name replaces the earlier one). `root` picks the
---- project; omitted, the last one is kept.
+--- (a later definition of the same name replaces the earlier one), then the sets next to
+--- files you opened. `root` picks the project; omitted, the last one is kept.
 function M.load(opts, root)
   if root ~= nil then M.root = root or nil end
   local previous = M.current
   M.order, M.by_name, M.files, M.errors = {}, {}, {}, {}
-  local function add(name, spec)
+  local builtin = require('earmark.builtin_sets')
+  local function add(name, spec, scope_dir)
+    if type(spec) == 'string' and builtin[spec] then spec = builtin[spec] end
+    if type(spec) == 'table' then
+      if spec.extends then spec = extended(spec) end
+      spec._files = scope_globs(spec.files, scope_dir)
+      if spec._files and M.by_name[name] and not M.by_name[name].files then
+        -- a set for some files never replaces a general one of the same name
+        name = name .. ' (' .. (spec._stem or 'file') .. ')'
+      end
+    end
     if not M.by_name[name] then M.order[#M.order + 1] = name end
     M.by_name[name] = normalize(name, spec)
   end
@@ -243,12 +326,19 @@ function M.load(opts, root)
   end
   if opts.sets_dir ~= false then
     for _, x in ipairs(dir_sets(opts.sets_dir or M.user_dir(), true)) do
-      add(x[1], x[2])
+      add(x[1], x[2], vim.env.HOME)
     end
   end
   if M.root then
     for _, x in ipairs(dir_sets(M.root .. '/.earmark/sets', false)) do
-      add(x[1], x[2])
+      add(x[1], x[2], M.root)
+    end
+  end
+  local dirs = vim.tbl_keys(M.sidecar_dirs)
+  table.sort(dirs)
+  for _, d in ipairs(dirs) do
+    for _, x in ipairs(dir_sets(d, true, true)) do
+      add(x[1], x[2], d)
     end
   end
   for path, err in pairs(M.errors) do
@@ -259,6 +349,8 @@ function M.load(opts, root)
   else
     M.current = (opts.current and M.by_name[opts.current]) and opts.current or M.order[1]
   end
+  if M.general and not M.by_name[M.general] then M.general = nil end
+  M.focused = nil -- a file's set may have appeared or gone: look again
   M.apply_highlights()
 end
 
@@ -268,13 +360,119 @@ function M.files_changed(opts)
     if mtime(path) ~= t then return true end
   end
   local dirs = {}
-  if opts.sets_dir ~= false then dirs[#dirs + 1] = opts.sets_dir or M.user_dir() end
-  if M.root then dirs[#dirs + 1] = M.root .. '/.earmark/sets' end
+  if opts.sets_dir ~= false then dirs[#dirs + 1] = { opts.sets_dir or M.user_dir(), { '*.lua', '*.json' } } end
+  if M.root then dirs[#dirs + 1] = { M.root .. '/.earmark/sets', { '*.lua', '*.json' } } end
+  for d in pairs(M.sidecar_dirs) do
+    for _, path in ipairs(M.sidecars(d)) do
+      if not M.files[path] then return true end
+    end
+  end
   for _, d in ipairs(dirs) do
-    for _, ext in ipairs({ '*.lua', '*.json' }) do
-      for _, path in ipairs(vim.fn.globpath(d, ext, false, true)) do
+    for _, ext in ipairs(d[2]) do
+      for _, path in ipairs(vim.fn.globpath(d[1], ext, false, true)) do
         if not M.files[path] then return true end
       end
+    end
+  end
+  return false
+end
+
+--- Paths of the `*.earmark-set.json` files in `dir` (not globpath: a folder named
+--- "[draft]" would be read as a pattern).
+function M.sidecars(dir)
+  local out = {}
+  local ok, iter = pcall(vim.fs.dir, dir)
+  if not ok then return out end
+  for name, kind in iter do
+    if (kind == 'file' or kind == 'link') and name:sub(-#M.SIDECAR) == M.SIDECAR and #name > #M.SIDECAR then
+      out[#out + 1] = dir .. '/' .. name
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+--- Start loading the `*.earmark-set.json` files in `dirs`; true if one of them has any and
+--- wasn't watched yet (the sets need loading again).
+function M.watch_dirs(dirs)
+  local new = false
+  for _, dir in ipairs(dirs) do
+    if dir ~= '' and not M.sidecar_dirs[dir] and #M.sidecars(dir) > 0 then
+      M.sidecar_dirs[dir] = true
+      new = true
+    end
+  end
+  return new
+end
+
+local function today()
+  return os.date('%Y-%m-%d')
+end
+
+--- Whether set `name` is offered for the file at `path` (nil: no file): not past its
+--- `expires` day, and, if it is for some files only, `path` is one of them.
+function M.visible(name, path)
+  local set = M.by_name[name]
+  if not set then return false end
+  if set.expires and set.expires < today() then return false end
+  if not set.files then return true end
+  if not path or path == '' then return false end
+  for _, g in ipairs(set.files) do
+    local rel = g[1] == '/' and path:sub(2) or vim.fs.relpath(g[1], path)
+    local ok, pat = pcall(vim.glob.to_lpeg, g[2])
+    if rel and ok and pat:match(rel) then return true end
+  end
+  return false
+end
+
+local function path_of(buf)
+  buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
+  if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= '' then return nil end
+  local name = vim.api.nvim_buf_get_name(buf)
+  return name ~= '' and vim.fs.normalize(vim.fn.fnamemodify(name, ':p')) or nil
+end
+
+--- The sets offered in buffer `buf` (default: current), in order: those for this file
+--- first, then the general ones. Sets for other files and expired ones are left out.
+function M.list(buf)
+  local path = path_of(buf)
+  local own, general = {}, {}
+  for _, n in ipairs(M.order) do
+    if M.visible(n, path) then
+      table.insert(M.by_name[n].files and own or general, n)
+    end
+  end
+  return vim.list_extend(own, general)
+end
+
+--- On entering `buf`: a set made for this file becomes the current one (unless it says
+--- `auto = false`); leaving for a file without one brings back the set used before.
+--- Returns true if the current set changed.
+function M.focus(buf)
+  local path = path_of(buf)
+  -- only on arriving in another file: a set you picked by hand here stays
+  if not path or path == M.focused then return false end
+  M.focused = path
+  local cur = M.by_name[M.current]
+  local here
+  for _, n in ipairs(M.order) do
+    local set = M.by_name[n]
+    if set.files and set.auto and M.visible(n, path) then
+      here = n
+      break
+    end
+  end
+  if cur and cur.files and M.visible(M.current, path) then return false end -- already on one for here
+  if here then
+    if not (cur and cur.files) then M.general = M.current end
+    M.current = here
+    return true
+  end
+  if cur and (cur.files or not M.visible(M.current, path)) then
+    local back = M.general and M.visible(M.general, path) and M.general or M.list(buf)[1]
+    if back and back ~= M.current then
+      M.current = back
+      return true
     end
   end
   return false
@@ -470,12 +668,13 @@ function M.resolve(count, set_name)
 end
 
 function M.cycle(step)
-  if #M.order == 0 then return end
+  local list = M.list()
+  if #list == 0 then return end
   local idx = 1
-  for i, n in ipairs(M.order) do
+  for i, n in ipairs(list) do
     if n == M.current then idx = i end
   end
-  M.current = M.order[((idx - 1 + (step or 1)) % #M.order) + 1]
+  M.current = list[((idx - 1 + (step or 1)) % #list) + 1]
   return M.current
 end
 

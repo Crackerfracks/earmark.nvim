@@ -244,7 +244,7 @@ Defaults:
 ```lua
 require('earmark').setup({
   -- Strings are generated numbered palettes; named tables are your own sets.
-  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber', 'feedback' },
   sets_dir = nil, -- your set files; default ~/.config/earmark/sets, false to skip
   default_label = nil, -- offered first before you've used any label, e.g. 'vivid/3'
   current = nil, -- set a count resolves against (default: first)
@@ -314,7 +314,8 @@ Your own sets:
 ```lua
 sets = {
   'vivid',
-  feedback = { labels = {
+  'feedback', -- the set that ships with earmark (see below)
+  critique = { labels = {
     { key = 'c', name = 'contradiction', color = '#e06c75' },
     { key = 'v', name = 'vague' },          -- colour picked automatically
     'cut this',                              -- key defaults to its position: 3
@@ -357,6 +358,57 @@ return {
 
 A value then reads `Accuracy · b Minor issue`, and the hover shows its text. `choices` can
 also be a map: `{ a = 'Correct', b = 'Minor issue' }`.
+
+A label can carry `tags = { 'option-a' }`: annotating with it adds those tags. A set can
+carry `tags = { 'todo', 'nit' }`: `<leader>mt` lists them first.
+
+### Feedback, and sets for one file
+
+The `feedback` set is for reviewing something someone else wrote (a plan, a draft, a demo,
+code). Its keys are 1 to 9, so a count picks the label: `2ghip` marks a paragraph "Change".
+
+| Key | Label | Meaning |
+|---|---|---|
+| 1 | Keep | good as it is |
+| 2 | Change | change this; the note says how |
+| 3 | Wrong | incorrect, or a bug |
+| 4 | Question | a question about this |
+| 5 | Unclear | confusing or hard to follow |
+| 6 | Cut | remove this |
+| 7 | Idea | an idea or something to add |
+| 8 | Prefer | choose this option |
+| 9 | Later | not now |
+
+Export the file (`<leader>me`) to hand the feedback over as a Markdown list, grouped by
+label, with the notes.
+
+A set can also belong to one file or a few. Put `<name>.earmark-set.json` in the same
+folder as the file, or in a folder above it inside the project:
+
+```json
+{
+  "extends": "feedback",
+  "labels": [
+    { "key": "a", "name": "Option A: one big picker", "tags": ["option-a"] },
+    { "key": "b", "name": "Option B: two small pickers", "tags": ["option-b"] }
+  ],
+  "tags": ["pick"],
+  "expires": "2026-12-01"
+}
+```
+
+- `plan.earmark-set.json` applies to `plan.md`, `plan.html` and so on (any `plan.*`). Give
+  `"files": ["drafts/*.md"]` to choose other files; the globs are relative to the set file's
+  folder.
+- Opening one of those files switches to its set; leaving it switches back to the set you
+  used before. `"auto": false` only lists it first instead.
+- The set is listed (`<leader>mS`, `<leader>ms`, Ctrl-s in the prompt) only in its files, so
+  sets made for one review don't fill up the list everywhere else.
+- `"extends": "feedback"` starts from the feedback labels; a label with the same key
+  replaces one of them.
+- After the `"expires"` day the set is no longer offered. Annotations made with it keep
+  their colours.
+- A set for some files never replaces a general set of the same name.
 
 ### Statusline
 

@@ -34,6 +34,18 @@ function M.open(buf, id)
   for t in pairs(from_note) do
     add(t)
   end
+  -- the tags its label set suggests (and the current set's), before the ones used before
+  local sets = require('earmark.sets')
+  local seen_set = {}
+  for _, name in ipairs({ a.values[1] and a.values[1].set, sets.current }) do
+    local set = name and not seen_set[name] and sets.by_name[name]
+    if set then
+      seen_set[name] = true
+      for _, t in ipairs(set.tags or {}) do
+        add(t)
+      end
+    end
+  end
   for _, k in ipairs(tags.known()) do
     add(k.name, k.count)
   end

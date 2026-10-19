@@ -268,7 +268,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
 
 `require('earmark').setup(opts)` with any of these (defaults shown):
 >lua
-  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber', 'feedback' },
   sets_dir = nil,          -- default ~/.config/earmark/sets; false to skip
   default_label = nil,     -- offered first, e.g. 'vivid/3' or 'review/q1'
   current = nil,           -- set a count resolves against (default: first)
@@ -308,11 +308,12 @@ of these to write every one (you are asked about the first).
 ==============================================================================
 10. LABEL SETS AND SET FILES                                    *earmark-sets*
 
-Strings in `sets` are generated numbered palettes. Named tables are your own:
+Strings in `sets` are generated numbered palettes, or `'feedback'`, the set
+that ships with earmark (|earmark-feedback|). Named tables are your own:
 >lua
   sets = {
     'vivid',
-    feedback = { labels = {
+    critique = { labels = {
       { key = 'c', name = 'contradiction', color = '#e06c75' },
       { key = 'v', name = 'vague' },     -- colour picked for you
       'cut this',                         -- key = its position, 3
@@ -342,6 +343,32 @@ Labels for rubrics and forms:
       requires = { q1 = { 'b', 'c' } } },
   } }
 <
+A label with `tags = { 'option-a' }` adds those tags to what it annotates. A
+set with `tags = { 'todo', 'nit' }` has them listed first in `<leader>mt`.
+
+                                                            *earmark-feedback*
+The `feedback` set is for reviewing a plan, draft, demo or code. Keys 1-9, so
+a count picks the label (`2ghip`):
+  1 Keep  2 Change  3 Wrong  4 Question  5 Unclear  6 Cut  7 Idea  8 Prefer
+  9 Later
+Export with `<leader>me` to hand the feedback over as a Markdown list.
+
+                                                            *earmark-set-for-file*
+A set can belong to some files: put `<name>.earmark-set.json` in their folder
+or a folder above it in the project.
+>json
+  { "extends": "feedback",
+    "labels": [ { "key": "a", "name": "Option A", "tags": ["option-a"] } ],
+    "tags": ["pick"], "expires": "2026-12-01" }
+<
+- `plan.earmark-set.json` applies to `plan.*`; `"files": ["drafts/*.md"]`
+  picks others (globs relative to the set file's folder).
+- Opening such a file switches to its set; leaving switches back.
+  `"auto": false` only lists it first.
+- It is listed only in its files. After `"expires"` it is not listed at all;
+  annotations made with it keep their colours.
+- `"extends"` starts from another set's labels; the same key replaces one.
+- It never replaces a general set of the same name.
 ==============================================================================
 11. STORAGE                                                  *earmark-storage*
 

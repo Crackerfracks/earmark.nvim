@@ -131,6 +131,12 @@ local function apply(buf, spans, value, how, quiet)
       local a, added = buffer.add(buf, r.s, r.e, value)
       if a then n = n + 1 end
       if added == 'added' then onto = onto + 1 end
+      -- a label that comes with tags (`tags` in its set) adds them
+      local l = a and added ~= 'same' and sets.label(value)
+      if l and l.tags then
+        local list = vim.list_extend(vim.deepcopy(a.tags or {}), l.tags)
+        buffer.set_tags(buf, a.id, list)
+      end
     end
   end
   if n > 0 then last_value = value end
@@ -430,12 +436,13 @@ end
 
 --- `<leader>mS`: choose the label set from a list.
 function M.pick_set()
-  vim.ui.select(sets.order, {
+  vim.ui.select(sets.list(), {
     prompt = 'Label set',
     format_item = function(name)
       local set = sets.by_name[name]
       local src = set.source and (' · ' .. vim.fn.fnamemodify(set.source, ':~:.')) or ''
-      return ('%s%s  (%d labels%s)'):format(name, name == sets.current and ' ✓' or '', #set.labels, src)
+      local here = set.files and ' · for this file' or ''
+      return ('%s%s  (%d labels%s%s)'):format(name, name == sets.current and ' ✓' or '', #set.labels, here, src)
     end,
   }, function(name)
     if name then M.use_set(name) end
@@ -450,13 +457,34 @@ local function sync_sets(buf)
     root = doc and doc.root
   end
   local switch = root and root ~= sets.root
-  if switch or sets.files_changed(config.options) then
+  -- sets kept next to the file (plan.earmark-set.json beside plan.md), in its folder or
+  -- a folder above it up to the project root
+  local name = api.nvim_buf_get_name(buf)
+  local new_dir = false
+  if vim.bo[buf].buftype == '' and name ~= '' then
+    local dir = vim.fs.normalize(vim.fn.fnamemodify(name, ':p:h'))
+    local dirs = { dir }
+    local top = root and vim.fs.normalize(root)
+    if top and vim.fs.relpath(top, dir) then
+      for parent in vim.fs.parents(dir) do
+        if not vim.fs.relpath(top, parent) then break end
+        dirs[#dirs + 1] = parent
+      end
+    end
+    new_dir = sets.watch_dirs(dirs)
+  end
+  local loaded = false
+  if switch or new_dir or sets.files_changed(config.options) then
     sets.load(config.options, switch and root or nil)
     for b in pairs(buffer.state) do
       buffer.rerender(b)
     end
-    return true
+    loaded = true
   end
+  if buf == api.nvim_get_current_buf() and sets.focus(buf) then
+    pcall(vim.cmd, 'redrawstatus!')
+  end
+  return loaded
 end
 M._sync_sets = sync_sets
 
@@ -962,7 +990,7 @@ local function register_actions()
   A({ name = 'regrow', desc = 'move the annotation onto a motion', modes = { n = M.regrow_expr, x = M.regrow_expr }, expr = true, cmd = false })
   A({ name = 'palette', desc = 'the set\'s colours as labelled patches', modes = { n = function() require('earmark.ui.palette').open() end },
     cmd = function(args) require('earmark.ui.palette').open(args[1]) end,
-    complete = function() return sets.order end })
+    complete = function() return sets.list() end })
   A({ name = 'color', desc = 'colour this label differently in this file', cmd = M.color,
     complete = function() return { 'reset' } end })
   A({ name = 'cycle_set', desc = 'next label set', modes = { n = M.cycle_set } })
@@ -983,7 +1011,7 @@ local function register_actions()
       if args[1] then M.use_set(args[1]) else M.cycle_set() end
     end,
     complete = function()
-      return sets.order
+      return sets.list()
     end,
   })
   A({
