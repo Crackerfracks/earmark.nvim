@@ -51,6 +51,7 @@ function M.doc(buf)
   if not vim.api.nvim_buf_is_valid(buf) then return nil end
   local bt = vim.bo[buf].buftype
   if vim.tbl_contains(config.options.ignore_buftypes, bt) then return nil end
+  if vim.b[buf].earmark_ui then return nil end -- our own floats: prompt, hover, note ...
   local name = vim.api.nvim_buf_get_name(buf)
   if bt == '' and name ~= '' and not name:match('^%w[%w+.-]*://') then
     local path = vim.fs.normalize(vim.fn.fnamemodify(name, ':p'))

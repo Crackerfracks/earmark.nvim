@@ -26,6 +26,7 @@ local op -- { win, cursor, visual, suffix, keys = {} } of the operator waiting f
 local replay -- spans the replayed operator must cover
 local last_value -- most recently used value; preselected in the prompt
 local asked = {} -- [buf]["set/key"] = true once the prompt asked to name that label
+local block_eol = false -- the last Visual block operator went to the ends of lines (`$`)
 
 local function value_for_count(count)
   local l = sets.resolve(count)
@@ -83,7 +84,8 @@ local function region(motion)
     local out = {}
     for _, p in ipairs(segs) do
       local row = p[1][2] - 1
-      out[#out + 1] = { s = { row, p[1][3] - 1 }, e = { row, excl_end(row, p[2][3]) } }
+      local e = block_eol and #(lines[row + 1] or '') or excl_end(row, p[2][3])
+      out[#out + 1] = { s = { row, p[1][3] - 1 }, e = { row, e } }
     end
     return out
   end
@@ -201,7 +203,9 @@ end
 --- annotating `spans` directly if the replay can't reproduce them.
 local function replay_operator(o, spans, value)
   pending, want_prompt, replay = value, false, spans
-  local ok = pcall(function()
+  -- (only in the window it started in, still showing that buffer)
+  local usable = api.nvim_win_is_valid(o.win) and api.nvim_win_get_buf(o.win) == o.buf
+  local ok = usable and pcall(function()
     api.nvim_set_current_win(o.win)
     api.nvim_win_set_cursor(o.win, o.cursor)
     vim.o.operatorfunc = "v:lua.require'earmark'.operatorfunc"
@@ -210,8 +214,8 @@ local function replay_operator(o, spans, value)
   end)
   if replay then -- the replay didn't reach operatorfunc
     replay = nil
-    if not ok then log.warn('replaying the operator failed') end
-    annotate(api.nvim_get_current_buf(), spans, value, true)
+    if usable and not ok then log.warn('replaying the operator failed') end
+    if api.nvim_buf_is_valid(o.buf) then annotate(o.buf, spans, value, true) end
   end
 end
 
@@ -258,9 +262,17 @@ local opfunc = "v:lua.require'earmark'.operatorfunc"
 --- dropped before g@, so it doesn't multiply the motion.
 function M.operator_expr(suffix)
   local mode = api.nvim_get_mode().mode
+  -- the '[ and '] marks don't say a block was extended with `$`: each line to its end
+  block_eol = mode == '\22' and vim.fn.winsaveview().curswant == vim.v.maxcol
   if vim.v.count > 0 then
     local value = value_for_count(vim.v.count)
-    if not value then return '<Ignore>' end
+    if not value then
+      if mode:match('^[vV\22]') then return '<Ignore>' end
+      -- still wait for the motion, so it isn't run as commands (`iw` would insert "w")
+      pending, want_prompt, fresh = nil, false, false
+      vim.o.operatorfunc = opfunc
+      return '<Esc>g@' .. (suffix or '')
+    end
     pending, want_prompt, fresh = value, false, true
     if not mode:match('^[vV\22]') and config.options.prompt.count_hint then
       -- the keys returned below haven't run yet: wait for the operator to start waiting
@@ -277,6 +289,7 @@ function M.operator_expr(suffix)
     want_prompt, fresh = true, false
     op = {
       win = api.nvim_get_current_win(),
+      buf = api.nvim_get_current_buf(),
       cursor = api.nvim_win_get_cursor(0),
       visual = mode:match('^[vV\22]') ~= nil,
       suffix = suffix,
@@ -291,7 +304,9 @@ function M.operator_expr(suffix)
         return
       end
       if not api.nvim_get_mode().mode:match('^no') then
-        -- the operator was cancelled before a motion completed
+        -- the operator was cancelled before a motion completed (now, not once scheduled:
+        -- this key may be a `.` that repeats the last annotation without asking)
+        if op == o then want_prompt = false end
         vim.schedule(function()
           if op == o then
             op, want_prompt = nil, false
@@ -712,6 +727,7 @@ local regrow_target
 --- the motion or selection (its note, labels and tags stay).
 function M.regrow_expr()
   local mode = api.nvim_get_mode().mode
+  block_eol = mode == '\22' and vim.fn.winsaveview().curswant == vim.v.maxcol
   local hits
   if mode:match('^[vV\22]') then
     local a, b = vim.fn.getpos('v'), vim.fn.getpos('.')
@@ -1150,6 +1166,9 @@ local function setup_autocmds()
     buffer.insert_left(ev.buf)
   end)
   au({ 'BufUnload' }, function(ev)
+    -- its note being edited goes with it (`:qa!` unloads buffers before VimLeavePre)
+    local note = package.loaded['earmark.ui.note']
+    if note and note.active and note.active.src_buf == ev.buf then note.save(note.active, true) end
     if buffer.state[ev.buf] then
       buffer.save(ev.buf)
       buffer.forget(ev.buf)
@@ -1160,6 +1179,9 @@ local function setup_autocmds()
     end
   end)
   au('VimLeavePre', function()
+    -- a note being edited is saved too, wherever the cursor is
+    local note = package.loaded['earmark.ui.note']
+    if note and note.active then note.save(note.active, true) end
     for buf in pairs(buffer.state) do
       buffer.save(buf)
     end
