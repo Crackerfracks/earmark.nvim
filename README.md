@@ -510,7 +510,10 @@ nvim --headless notes/draft.md -c 'Earmark check' -c q
 
 Writes are atomic. A record that can't be parsed is left untouched, and saving for that
 buffer is disabled with a warning. v1 records (snapshot inline) are read as is and rewritten
-as v2 on the next save.
+as v2 on the next save. Records are not merged: when two Neovim instances annotate the same
+file, the last to save wins (`:Earmark reload` reads what the other one saved). When the
+root changes (a root marker is added or removed), a file's record moves to its new place the
+next time the file is opened.
 
 ## API
 

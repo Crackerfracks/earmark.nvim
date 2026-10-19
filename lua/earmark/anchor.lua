@@ -640,8 +640,8 @@ function M.reanchor(old_lines, new_lines, items)
         local amb = ambiguous(cands) and cands[2].context >= M.MIN_CONTEXT
         placed = { best.s, best.e, 'relocated', best.score, amb }
       elseif moved_line(it) then
-        local so2, eo2 = moved_line(it)
-        placed = { so2, eo2, 'relocated' }
+        local ms, me = moved_line(it)
+        placed = { ms, me, 'relocated' }
       elseif mapped_text and mapped_text ~= '' and not mapped_text:match('^%s*$') then
         placed = { ns, ne, 'edited' }
       elseif best and #it.quote >= M.MIN_UNIQUE_QUOTE and #cands == 1 then

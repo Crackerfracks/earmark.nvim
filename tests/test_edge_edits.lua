@@ -422,6 +422,33 @@ T['hidden']['a hidden buffer replaced wholesale and then unloaded saves its anno
   eq(starts(), { { 2, 2 } })
 end
 
+T['hidden']['replaced while hidden, repaired by the time it is shown again'] = function()
+  h.open()
+  mark({ 1, 2 }, { 1, 8 })
+  local buf = child.lua_get('vim.api.nvim_get_current_buf()')
+  h.open({ 'other' }, 'notes/other.md')
+  child.api.nvim_buf_set_lines(buf, 0, -1, false, { 'new first', H.LINES[1], H.LINES[2], H.LINES[3] })
+  child.cmd('buffer ' .. buf)
+  h.settle()
+  eq(quotes(), { 'second' })
+  eq(starts(), { { 2, 2 } })
+end
+
+T['hidden']['replaced while shown in a float (current window elsewhere)'] = function()
+  h.open()
+  mark({ 1, 2 }, { 1, 8 })
+  local buf = child.lua_get('vim.api.nvim_get_current_buf()')
+  h.open({ 'other' }, 'notes/other.md')
+  child.lua('_G.fw = vim.api.nvim_open_win(..., false, { relative = "editor", row = 1, col = 1, width = 40, height = 5 })', { buf })
+  child.api.nvim_buf_set_lines(buf, 0, -1, false, { 'new first', H.LINES[1], H.LINES[2], H.LINES[3] })
+  h.settle()
+  local got = child.lua_get('vim.tbl_map(function(x) return x.s or false end, require("earmark").list(...))', { buf })
+  -- repaired without TextChanged (which only fires for the current buffer)
+  eq(got[1], { 2, 2 })
+  child.lua('require("earmark.buffer").save(...)', { buf })
+  eq(child.lua_get('require("earmark").list(...)[1].s', { buf }), { 2, 2 })
+end
+
 T['hidden']['annotating a hidden buffer by number'] = function()
   h.open()
   local buf = child.lua_get('vim.api.nvim_get_current_buf()')

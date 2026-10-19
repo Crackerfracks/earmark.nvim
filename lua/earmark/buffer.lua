@@ -440,7 +440,9 @@ local function load(buf, S)
   if S.moved_from then
     -- a buffer still open on the old path (renamed outside Neovim) must not write it back
     for _, other in pairs(M.state) do
-      if other ~= S and other.doc.record == S.moved_from then other.readonly = 'its record moved to ' .. S.doc.record end
+      if other ~= S and other.doc.record == S.moved_from then
+        other.readonly = 'its record moved to ' .. S.doc.record
+      end
     end
     M.save(buf)
     store.write(S.moved_from, nil)
@@ -493,6 +495,7 @@ function M.reload(buf)
   local S = M.state[buf]
   if S then
     if S.timer then S.timer:close() end
+    if S.change_timer then S.change_timer:close() end
     api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
     api.nvim_buf_clear_namespace(buf, M.ns_swatch, 0, -1)
     M.state[buf] = nil
@@ -505,6 +508,7 @@ function M.forget(buf)
   local S = M.state[buf]
   if not S then return end
   if S.timer and not S.timer:is_closing() then S.timer:close() end
+  if S.change_timer and not S.change_timer:is_closing() then S.change_timer:close() end
   M.state[buf] = nil
   -- an unloaded buffer keeps its extmarks: without this, `:e` after an outside edit draws
   -- the old marks at their old places next to the ones loaded again
@@ -993,6 +997,14 @@ function M.track(buf, S)
       vim.schedule(function()
         if api.nvim_buf_is_valid(b) and M.state[b] == S and not in_insert() then cache_positions(b, S) end
       end)
+      -- TextChanged only fires in the current buffer: repair others (floats, hidden) from here
+      if b ~= api.nvim_get_current_buf() then
+        S.change_timer = S.change_timer or vim.uv.new_timer()
+        S.change_timer:stop()
+        S.change_timer:start(config.options.debounce_ms, 0, vim.schedule_wrap(function()
+          if M.state[b] == S and api.nvim_buf_is_loaded(b) then log.guard('on_change', M.on_change, b) end
+        end))
+      end
     end,
     on_detach = function()
       S.tracking = false

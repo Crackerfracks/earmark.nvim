@@ -115,6 +115,42 @@ T['rename'][':saveas! over an annotated file replaces its record'] = function()
   eq(h.texts(), { { text = 'quick', label = '1', status = 'ok' } })
 end
 
+T['rename'][':write copy.md writes a copy; the record stays with the buffer'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 })
+  child.cmd('write')
+  child.cmd('write ' .. root() .. '/notes/copy.md')
+  eq(records(root() .. '/.earmark/docs'), { 'notes/doc.md.json' })
+  eq(child.lua_get('vim.fs.basename(vim.api.nvim_buf_get_name(0))'), 'doc.md')
+end
+
+T['rename']['an unnamed buffer written to a file takes its annotations along'] = function()
+  child.cmd('enew')
+  child.api.nvim_buf_set_lines(0, 0, -1, false, H.LINES)
+  mark({ 0, 4 }, { 0, 9 })
+  save()
+  eq(#child.lua_get('vim.fn.glob(_G.tmp .. "/data/scratch/*.json", true, true)'), 1)
+  child.fn.mkdir(root() .. '/notes', 'p')
+  child.cmd('write ' .. root() .. '/notes/new.md')
+  eq(records(root() .. '/.earmark/docs'), { 'notes/new.md.json' })
+  eq(#child.lua_get('vim.fn.glob(_G.tmp .. "/data/scratch/*.json", true, true)'), 0)
+  child.cmd('bwipeout!')
+  child.cmd('edit ' .. root() .. '/notes/new.md')
+  eq(quotes(), { 'quick' })
+end
+
+T['rename']['a nofile scratch buffer keeps its own record and never touches files'] = function()
+  child.lua([[
+    _G.sb = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(_G.sb, 0, -1, false, { 'scratch text here' })
+    vim.api.nvim_buf_set_name(_G.sb, _G.root .. '/notes/doc.md.preview')
+    require('earmark').annotate(_G.sb, { 0, 0 }, { 0, 7 }, { set = 'vivid', label = '1' })
+    require('earmark.buffer').save(_G.sb)
+  ]])
+  eq(records(root() .. '/.earmark/docs'), {})
+  eq(#child.lua_get('vim.fn.glob(_G.tmp .. "/data/scratch/*.json", true, true)'), 1)
+end
+
 ---------------------------------------------------------------------------
 -- Renames outside Neovim
 ---------------------------------------------------------------------------
@@ -162,6 +198,66 @@ T['moved outside']['mv to a new directory, then :e the old path shows an empty n
   child.cmd('bwipeout!')
   child.cmd('edit ' .. root() .. '/elsewhere/doc.md')
   eq(quotes(), { 'quick' })
+end
+
+T['moved outside']['mv after another file was opened (rename index already built)'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 })
+  child.cmd('write')
+  child.cmd('bwipeout!')
+  h.open({ 'an unannotated file' }, 'notes/plain.md') -- looks for renamed records
+  child.lua('vim.uv.fs_rename(_G.root .. "/notes/doc.md", _G.root .. "/notes/moved.md")')
+  child.cmd('edit ' .. root() .. '/notes/moved.md')
+  eq(quotes(), { 'quick' })
+end
+
+T['moved outside']['a copy of an orphaned record\'s text is adopted once only'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 })
+  child.cmd('write')
+  child.cmd('bwipeout!')
+  child.lua([[
+    vim.fn.writefile(vim.fn.readfile(_G.root .. '/notes/doc.md'), _G.root .. '/notes/a.md')
+    vim.fn.writefile(vim.fn.readfile(_G.root .. '/notes/doc.md'), _G.root .. '/notes/b.md')
+    vim.fn.delete(_G.root .. '/notes/doc.md')
+  ]])
+  child.cmd('edit ' .. root() .. '/notes/a.md')
+  eq(quotes(), { 'quick' })
+  child.cmd('edit ' .. root() .. '/notes/b.md')
+  eq(quotes(), {})
+  eq(records(root() .. '/.earmark/docs'), { 'notes/a.md.json' })
+end
+
+T['moved outside']['a new file with the same text as an annotated, existing file adopts nothing'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 })
+  child.cmd('write')
+  h.open(H.LINES, 'notes/same.md')
+  eq(quotes(), {})
+  eq(records(root() .. '/.earmark/docs'), { 'notes/doc.md.json' })
+end
+
+T['moved outside']['opening files in a project with 2000 records stays fast'] = function()
+  h.open()
+  mark({ 0, 4 }, { 0, 9 })
+  save()
+  local ms = child.lua_get([[(function()
+    local data = table.concat(vim.fn.readfile(_G.root .. '/.earmark/docs/notes/doc.md.json'), '\n')
+    for i = 1, 2000 do
+      local rec = vim.json.decode(data)
+      rec.doc.key = ('many/%d.md'):format(i)
+      rec.fingerprint = vim.fn.sha256(tostring(i))
+      require('earmark.store').write_json(_G.root .. ('/.earmark/docs/many/%d.md.json'):format(i), rec)
+    end
+    local t0 = vim.uv.hrtime()
+    for i = 1, 5 do
+      _G.open(('fresh/%d.md'):format(i), { 'unannotated text ' .. i })
+      require('earmark').annotate(0, { 0, 0 }, { 0, 3 }, { set = 'vivid', label = '1' })
+      require('earmark.buffer').save(0) -- (a write: the next open looks again)
+    end
+    return (vim.uv.hrtime() - t0) / 1e6 / 5
+  end)()]])
+  if ms > 2000 then error(('opening a file took %d ms'):format(ms)) end
 end
 
 ---------------------------------------------------------------------------
@@ -259,11 +355,10 @@ T['symlinks']['link and real path share one record'] = function()
   eq(quotes(), { 'quick', 'second' })
 end
 
-T['symlinks']['two buffers on one file (link and target) do not clobber each other'] = function()
+T['symlinks']['link and target loaded together share a buffer, so nothing is clobbered'] = function()
   h.open()
   child.cmd('bwipeout!')
   child.lua('vim.uv.fs_symlink(_G.root .. "/notes/doc.md", _G.root .. "/link.md")')
-  -- force two buffers: one via the link, one via the target
   child.lua([[
     _G.b1 = vim.fn.bufadd(_G.root .. '/link.md'); vim.fn.bufload(_G.b1)
     _G.b2 = vim.fn.bufadd(_G.root .. '/notes/doc.md'); vim.fn.bufload(_G.b2)
@@ -278,12 +373,8 @@ T['symlinks']['two buffers on one file (link and target) do not clobber each oth
   ]])
   child.cmd('%bwipeout!')
   child.cmd('edit ' .. root() .. '/notes/doc.md')
-  if n == 1 then
-    eq(quotes(), { 'quick', 'second' })
-  else
-    -- two buffers on one record: the last save wins, the record stays whole
-    eq(#h.texts() >= 1, true)
-  end
+  eq(n, 1) -- Neovim gives a file one buffer however it is reached (same inode)
+  eq(quotes(), { 'quick', 'second' })
 end
 
 T['symlinks']['a symlinked project directory'] = function()

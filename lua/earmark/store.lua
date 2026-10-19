@@ -108,9 +108,8 @@ local function is_pos(p)
 end
 
 local function is_annotation(a)
-  if type(a) ~= 'table' or type(a.id) ~= 'string' or type(a.values) ~= 'table' or type(a.values[1]) ~= 'table' then
-    return false
-  end
+  if type(a) ~= 'table' or type(a.id) ~= 'string' then return false end
+  if type(a.values) ~= 'table' or type(a.values[1]) ~= 'table' then return false end
   for _, k in ipairs({ 'quote', 'prefix', 'suffix', 'original_quote', 'note' }) do
     if a[k] ~= nil and type(a[k]) ~= 'string' then return false end
   end
@@ -282,7 +281,7 @@ end
 -- Rename detection: records whose file no longer exists, indexed by fingerprint.
 ---------------------------------------------------------------------------
 
-local orphan_index = {} -- store dir -> { [fingerprint] = record path }
+local orphan_index = {} -- store dir -> { [fingerprint] = { { record path, source path } ... } }
 
 function M.orphans_dirty()
   orphan_index = {}
@@ -307,7 +306,9 @@ function M.find_rerooted(doc)
       if rec then return rec end
     end
   end
-  if doc.root then return found(config.options.storage_dir .. '/files/' .. doc.path:gsub('^/', '') .. '.json') end
+  if doc.root then
+    return found(config.options.storage_dir .. '/files/' .. doc.path:gsub('^/', '') .. '.json')
+  end
 end
 
 --- Find a record for a file that was renamed/moved: one in `doc.dir` whose source file is
@@ -322,13 +323,19 @@ function M.find_renamed(doc, lines)
           local path = doc.dir .. '/' .. name
           local rec = M.read(path)
           local src = rec and source_path(doc.dir, rec)
-          if src and not uv.fs_stat(src) and rec.fingerprint then idx[rec.fingerprint] = path end
+          if src and rec.fingerprint then
+            idx[rec.fingerprint] = idx[rec.fingerprint] or {}
+            table.insert(idx[rec.fingerprint], { path, src })
+          end
         end
       end
     end
     orphan_index[doc.dir] = idx
   end
-  return idx[M.fingerprint(lines)]
+  -- whether the source is gone is checked now: files move outside Neovim without telling us
+  for _, it in ipairs(idx[M.fingerprint(lines)] or {}) do
+    if not uv.fs_stat(it[2]) and uv.fs_stat(it[1]) then return it[1] end
+  end
 end
 
 return M
