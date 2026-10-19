@@ -59,39 +59,76 @@ that opens it with this checkout, if you want to look before touching your confi
 
 ## Use
 
+`<leader>m?` opens a list of every key below, grouped the same way and showing your own
+mappings; `<CR>` on a row runs it. With [which-key](https://github.com/folke/which-key.nvim)
+installed, each key also gets a short description and an icon for its group.
+
+**Annotate**
+
 | Keys | Action |
 |---|---|
-| `{count}gh{motion}` | annotate the motion with label `{count}` of the current set (`3ghiw`, `12gh$`, `ghap`) |
+| `{count}gh{motion}` | annotate with label `{count}` of the current set (`3ghiw`, `12gh$`) |
+| `gh{motion}` | annotate, choosing the label in a prompt (see below) |
 | `{count}ghh` | annotate the line |
 | `{Visual}{count}gh` | annotate the selection (block selections: one annotation per line) |
-| `gh{motion}` without a count | open the label prompt (see below) |
 | `.` | repeat with the same label, no prompt |
-| `<leader>ml` | change the label of the annotation under cursor (`{count}` picks among overlaps) |
-| `<leader>ma` | add another label to the annotation under cursor |
-| `<leader>mr` | name (or rename) the label of the annotation under cursor |
-| `<leader>mx` | erase annotation under cursor (Visual: all in selection) |
+| `<leader>mo` | give every other occurrence of the annotated text the same labels |
+
+**Change the annotation under the cursor**
+
+| Keys | Action |
+|---|---|
+| `<leader>ml` | change its label (`{count}` picks among overlapping ones) |
+| `<leader>ma` | add another label |
+| `<leader>mr` | name (or rename) its label for this file; an empty name clears it |
+| `<leader>mg{motion}` / `{Visual}<leader>mg` | move it onto the motion / selection (note and labels stay) |
+| `<leader>mx` | erase it (Visual: every annotation in the selection) |
 | `<leader>mX` | erase every annotation in the buffer (restorable) |
 | `<leader>mu` | restore the most recently erased |
+
+**Notes and tags**
+
+| Keys | Action |
+|---|---|
+| `<leader>mm` | open / close its note (`{count}` picks among overlaps) |
+| `<leader>mt` | add / remove tags (lists every tag you've used) |
+| `<leader>mi` | show the details float now and move into it (scroll; `q` closes) |
+| `<leader>mh` | details when the cursor stops: on / off |
+| `<leader>mv` | `#tags` at the ends of lines: on / off (off at startup) |
+
+**Move**
+
+| Keys | Action |
+|---|---|
 | `<leader>mn` / `<leader>mN` | next / previous annotation (wraps; `{count}` skips) |
-| `<leader>m]` / `<leader>m[` | next / previous with the same label as the one under cursor |
+| `<leader>m]` / `<leader>m[` | next / previous with the label under the cursor |
 | `<leader>mj` | jump labels on every visible annotation ([flash.nvim](https://github.com/folke/flash.nvim); without it, the picker) |
+
+**Find and review**
+
+| Keys | Action |
+|---|---|
 | `<leader>mp` / `<leader>mP` | pick an annotation in this file / in the whole project |
+| `<leader>mq` | this file's annotations into the quickfix list |
 | `<leader>md` | review the annotations whose text changed or disappeared |
 | `{Visual}<leader>mR` | attach the annotation chosen in the review list to the selection |
-| `<leader>mq` | this file's annotations into the quickfix list |
 | `<leader>mD` | compare an annotation's original text with what it says now |
-| `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
-| `<leader>mo` | give every other occurrence of the annotated text the same labels |
-| `<leader>mz` | promote the annotation under cursor to a [zk](https://github.com/zk-org/zk) note, or open the note it already has; in a note, list the annotations linked to it (see [zk](#zk)) |
-| `<leader>mg{motion}` / `{Visual}<leader>mg` | move the annotation under cursor onto the motion / selection (note and labels stay) |
-| `<leader>mc` | the palette: every label of the set as a big colour patch with your name for it, its colour's name, hex and uses; `<CR>` makes it the label `gh` offers first, digits jump to a key, `r` names it, `<Tab>` switches sets |
+
+**Label sets**
+
+| Keys | Action |
+|---|---|
 | `<leader>ms` | switch to the next label set (a popup shows its colours) |
 | `<leader>mS` | choose the label set from a list |
-| `<leader>mm` | open / close the note of the annotation under cursor (`{count}` picks among overlaps) |
-| `<leader>mi` | show the details float now and enter it (scroll; `q` closes) |
-| `<leader>mh` | automatic hover on / off |
-| `<leader>mt` | add / remove tags of the annotation under cursor (list of every tag you've used) |
-| `<leader>mv` | show / hide `#tags` at the ends of lines (hidden at startup) |
+| `<leader>mc` | the palette: every label of the set as a colour patch with your name for it, its colour's name, hex and uses; `<CR>` makes it the label `gh` offers first, digits jump to a key, `r` names it, `<Tab>` switches sets |
+
+**Export and zk**
+
+| Keys | Action |
+|---|---|
+| `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
+| `<leader>mz` | make a [zk](https://github.com/zk-org/zk) note from the annotation, or open the note it has; in a note, list the annotations linked to it (see [zk](#zk)) |
+| `<leader>m?` | the key list |
 
 ### The label prompt
 
@@ -231,7 +268,7 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log|help}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -441,7 +478,7 @@ sections = { lualine_x = { function() return require('earmark').statusline({ hl 
 `(earmark-tags)`, `(earmark-toggle-indicators)`, `(earmark-next-same)`, `(earmark-prev-same)`,
 `(earmark-jump)`, `(earmark-pick)`, `(earmark-pick-all)`, `(earmark-review)`, `(earmark-reanchor)`, `(earmark-qf)`, `(earmark-diff)`,
 `(earmark-export)`, `(earmark-occurrences)`, `(earmark-regrow)`, `(earmark-zk)`, `(earmark-relabel)`, `(earmark-add-value)`,
-`(earmark-rename)`, `(earmark-palette)`.
+`(earmark-rename)`, `(earmark-palette)`, `(earmark-help)`.
 
 ## Storage
 
