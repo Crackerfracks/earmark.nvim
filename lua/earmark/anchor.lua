@@ -472,6 +472,22 @@ end
 -- Main entry point
 ---------------------------------------------------------------------------
 
+--- End (exclusive) of the text starting at 0-based `s` in `str` that equals `quote` when
+--- whitespace is ignored, or nil.
+local function squashed_end(str, s, quote)
+  local q = quote:gsub('%s', '')
+  if q == '' then return nil end
+  local i = s + 1
+  for c in q:gmatch('.') do
+    while str:sub(i, i):match('^%s$') do
+      i = i + 1
+    end
+    if str:sub(i, i) ~= c then return nil end
+    i = i + 1
+  end
+  return i - 1
+end
+
 --- @class earmark.AnchorItem
 --- @field id string
 --- @field s integer[] {row, col} start in old text
@@ -569,6 +585,27 @@ function M.reanchor(old_lines, new_lines, items)
     return seg_map(h, a_str, old.starts[h[1]], b_str, b_base, off, side)
   end
 
+  -- A one-line span whose line was moved whole (`:sort`, `ddp`), where its own text is too
+  -- short to trust and its surroundings changed: the same columns of that line, if the line
+  -- is unique before and after.
+  local counts
+  local function moved_line(it)
+    local l = it.s[1] == it.e[1] and old_lines[it.s[1] + 1]
+    if not l or not l:match('%S') then return nil end
+    if not counts then
+      counts = { old = {}, new = {}, at = {} }
+      for _, x in ipairs(old_lines) do
+        counts.old[x] = (counts.old[x] or 0) + 1
+      end
+      for i, x in ipairs(new_lines) do
+        counts.new[x], counts.at[x] = (counts.new[x] or 0) + 1, i
+      end
+    end
+    if counts.old[l] ~= 1 or counts.new[l] ~= 1 then return nil end
+    local start = new.starts[counts.at[l]]
+    return start + it.s[2], start + it.e[2]
+  end
+
   for _, it in ipairs(items) do
     local so, eo = M.pos_to_off(old, it.s[1], it.s[2]), M.pos_to_off(old, it.e[1], it.e[2])
     local ns, ne
@@ -590,8 +627,11 @@ function M.reanchor(old_lines, new_lines, items)
 
     local mapped_text = ns and ne and new.str:sub(ns + 1, ne) or nil
     local placed
+    local squashed = mapped_text and mapped_text ~= it.quote and squashed_end(new.str, ns, it.quote)
     if mapped_text and mapped_text == it.quote then
       placed = { ns, ne, 'mapped' }
+    elseif squashed then
+      placed = { ns, squashed, 'mapped' } -- only spacing changed (a formatter, re-wrapping)
     else
       local near = ns or (so and map_char(so, 'start'))
       local cands = (it.quote and it.quote ~= '') and M.candidates(new, it, near, 3, { fuzzy = false }) or {}
@@ -599,6 +639,9 @@ function M.reanchor(old_lines, new_lines, items)
       if best and best.context >= M.MIN_CONTEXT then
         local amb = ambiguous(cands) and cands[2].context >= M.MIN_CONTEXT
         placed = { best.s, best.e, 'relocated', best.score, amb }
+      elseif moved_line(it) then
+        local ms, me = moved_line(it)
+        placed = { ms, me, 'relocated' }
       elseif mapped_text and mapped_text ~= '' and not mapped_text:match('^%s*$') then
         placed = { ns, ne, 'edited' }
       elseif best and #it.quote >= M.MIN_UNIQUE_QUOTE and #cands == 1 then
