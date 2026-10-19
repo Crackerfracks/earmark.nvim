@@ -315,6 +315,7 @@ end
 function M.open(opts)
   opts = opts or {}
   M.close()
+  if require('earmark.ui.place').in_cmdwin() then return end
   M.apply_highlights()
   local max_w = vim.o.columns - 4
   local layout = M.layout(max_w, opts.columns)

@@ -141,11 +141,13 @@ function M.close(E)
   E = E or M.active
   if not E or E.closing then return end
   E.closing = true
-  local was_current = E.win ~= nil and api.nvim_get_current_win() == E.win
+  local shown = E.win ~= nil and api.nvim_win_is_valid(E.win) and api.nvim_win_get_buf(E.win) == E.buf
+  local was_current = shown and api.nvim_get_current_win() == E.win
   M.save(E, true)
   if M.active == E then M.active = nil end
   pcall(api.nvim_del_augroup_by_name, 'earmark_note')
-  if E.win and api.nvim_win_is_valid(E.win) then
+  -- (a window that shows another file now is left alone)
+  if shown then
     -- the last window can't be closed; show the source buffer there instead
     if #api.nvim_list_wins() == 1 then
       if api.nvim_buf_is_valid(E.src_buf) then api.nvim_win_set_buf(E.win, E.src_buf) end
@@ -201,6 +203,17 @@ local function autocmds(E)
       M.save(E, true)
     end,
   })
+  -- shown in no window any more (another file opened in its window): save it and close
+  api.nvim_create_autocmd('BufHidden', {
+    group = group,
+    buffer = E.buf,
+    callback = function()
+      if E.switching or E.closing then return end
+      vim.schedule(function()
+        M.close(E)
+      end)
+    end,
+  })
   api.nvim_create_autocmd('WinClosed', {
     group = group,
     callback = function(ev)
@@ -231,7 +244,7 @@ function M.open(src_buf, id, opts)
   opts = opts or {}
   if src_buf == 0 then src_buf = api.nvim_get_current_buf() end
   local a = buffer.annotation(src_buf, id)
-  if not a then return end
+  if not a or place.in_cmdwin() then return end
   if M.active then
     local same = M.active.id == id
     M.close(M.active)
@@ -248,7 +261,9 @@ function M.open(src_buf, id, opts)
   local E = { buf = buf, src_buf = src_buf, id = id, src_win = api.nvim_get_current_win() }
   api.nvim_buf_set_name(buf, name)
   local bo = vim.bo[buf]
-  bo.buftype, bo.bufhidden, bo.swapfile, bo.buflisted = 'acwrite', 'wipe', false, false
+  -- 'hide', not 'wipe': closing the window (<C-w>c, :close) with unsaved text must not fail
+  -- with E37; WinClosed then saves it and M.close() wipes it
+  bo.buftype, bo.bufhidden, bo.swapfile, bo.buflisted = 'acwrite', 'hide', false, false
   local ul = bo.undolevels
   bo.undolevels = -1
   api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(a.note or '', '\n'))

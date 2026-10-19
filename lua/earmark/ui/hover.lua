@@ -270,6 +270,7 @@ end
 --- `<leader>mi`: show the hover for everything under the cursor now and enter it; pressed
 --- again (while it's shown), focus it.
 function M.peek(count)
+  if place.in_cmdwin() then return end
   local win = api.nvim_get_current_win()
   local buf = api.nvim_get_current_buf()
   local hits = buffer.find(buf, cursor_pos(win))

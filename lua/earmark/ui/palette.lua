@@ -161,8 +161,10 @@ local function keymaps(P)
     if not r then return end
     local cur = r.name
     vim.ui.input({ prompt = ('Name for %s·%s in this file: '):format(P.set, r.l.key), default = cur }, function(name)
-      if name == nil or M.active ~= P then return end
+      if name == nil then return end
       require('earmark').rename_label(P.src_buf, r.value, vim.trim(name) ~= '' and vim.trim(name) or nil)
+      -- an input in its own float (snacks, dressing) closed the palette: the name still counts
+      if M.active ~= P or not api.nvim_win_is_valid(P.win) then return end
       local row = api.nvim_win_get_cursor(P.win)[1]
       render(P)
       api.nvim_win_set_cursor(P.win, { row, 0 })
@@ -202,6 +204,7 @@ end
 --- Open the palette for `set_name` (default: the current set).
 function M.open(set_name)
   M.close()
+  if require('earmark.ui.place').in_cmdwin() then return end
   local src = api.nvim_get_current_buf()
   set_name = set_name or sets.current
   if not sets.by_name[set_name] then return end

@@ -257,8 +257,16 @@ local function footer(P)
   return ' ⏎ apply  ⇥ name  ^n/^p  ^s set  ␛ cancel '
 end
 
+--- The window being annotated is still there and still shows the buffer being annotated.
+local function src_ok(P)
+  return api.nvim_win_is_valid(P.src_win) and api.nvim_win_get_buf(P.src_win) == P.src_buf
+end
+
+local cancel
+
 local function render(P)
   if not (api.nvim_buf_is_valid(P.buf) and api.nvim_win_is_valid(P.win)) then return end
+  if not src_ok(P) then return cancel(P) end
   local value = current_value(P)
   if P.stage == 'label' or P.stage == 'choice' then preview(P, value) end
   local width = math.min(opts_().width, math.max(20, api.nvim_win_get_width(P.src_win) - 4))
@@ -307,7 +315,7 @@ local function finish(P, fn)
   end)
 end
 
-local function cancel(P)
+function cancel(P)
   finish(P, P.on_cancel)
 end
 
@@ -368,6 +376,7 @@ local function enter_choice_stage(P, value)
 end
 
 local function accept(P)
+  if not src_ok(P) then return cancel(P) end
   if P.stage == 'label' then
     local value = current_value(P)
     if not value then return end
@@ -533,6 +542,7 @@ end
 --- opts.existing: values already on the annotation (for labels' `requires`);
 --- opts.on_accept(value, name|nil); opts.on_cancel().
 function M.open(opts)
+  if place.in_cmdwin() then return end
   if M.active then close(M.active) end
   local src_win = opts.win or api.nvim_get_current_win()
   local P = {
@@ -592,6 +602,21 @@ function M.open(opts)
     buffer = P.buf,
     callback = function()
       on_text_changed(P)
+    end,
+  })
+  -- the window or buffer being annotated went away: nothing left to apply a label to
+  api.nvim_create_autocmd('WinClosed', {
+    group = group,
+    pattern = tostring(src_win),
+    callback = function()
+      if not P.closing then cancel(P) end
+    end,
+  })
+  api.nvim_create_autocmd('BufWipeout', {
+    group = group,
+    buffer = P.src_buf,
+    callback = function()
+      if not P.closing then cancel(P) end
     end,
   })
   api.nvim_create_autocmd('WinLeave', {
