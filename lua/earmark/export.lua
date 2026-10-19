@@ -67,6 +67,7 @@ end
 function M.markdown(buf, opts)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   opts = vim.tbl_extend('force', config.options.export, opts or {})
+  require('earmark.sets').pick_variants(require('earmark.sets').path_of(buf))
   local list = buffer.list(buf)
   local placed, detached = {}, {}
   for _, x in ipairs(list) do

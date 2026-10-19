@@ -512,15 +512,30 @@ T['a file\'s own set named like a general one gets a suffix; the general one is 
 end
 
 T['two files\' own sets with the same name in different folders each keep their labels'] = function()
-  MiniTest.skip('sets are found by name: two plan.earmark-set.json in different folders share the name "plan" '
-    .. '(the later replaces the earlier); telling them apart needs per-file set lookup')
-  sidecar('one/plan.earmark-set.json', { labels = { { key = 'a', name = 'One A' } } })
-  sidecar('two/plan.earmark-set.json', { labels = { { key = 'a', name = 'Two A' } } })
+  sidecar('one/plan.earmark-set.json', { labels = { { key = 'a', name = 'One A', color = '#ff0000' } } })
+  sidecar('two/plan.earmark-set.json', { labels = { { key = 'a', name = 'Two A', color = '#0000ff' } } })
+  local name = 'require("earmark").display_name(0, { set = "plan", label = "a" })'
   h.open(nil, 'one/plan.md')
   child.lua('require("earmark").annotate(0, { 0, 4 }, { 0, 9 }, { set = "plan", label = "a" })')
+  eq(child.lua_get(name), 'One A')
   h.open(nil, 'two/plan.md')
+  eq(child.lua_get(name), 'Two A')
+  eq(child.lua_get('require("earmark.sets").list()[1]'), 'plan')
   child.cmd('buffer ' .. child.fn.bufnr('one/plan.md'))
-  eq(child.lua_get('require("earmark.buffer").display_name(0, { set = "plan", label = "a" })'), 'One A')
+  eq(child.lua_get(name), 'One A')
+  eq(child.lua_get('require("earmark.sets").current'), 'plan')
+  -- drawn in this file's colour again
+  local bg = child.lua_get([[(function()
+    local m = vim.api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })
+    for _, x in ipairs(m) do
+      local g = x[4].hl_group
+      if g and g:match('^EarmarkLabel') then return vim.api.nvim_get_hl(0, { name = g }).bg end
+    end
+  end)()]])
+  eq(bg ~= nil and bg ~= tonumber('0000ff', 16), true)
+  -- the export of each file uses its own names
+  child.cmd('buffer ' .. child.fn.bufnr('two/plan.md'))
+  eq(table.concat(child.lua_get('require("earmark").export(vim.fn.bufnr("one/plan.md"))'), '\n'):find('One A', 1, true) ~= nil, true)
 end
 
 T['a file opened before setup gets its project and own sets'] = function()
