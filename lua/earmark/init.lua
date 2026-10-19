@@ -1026,6 +1026,7 @@ local function register_actions()
     end,
   })
   A({ name = 'log', desc = 'show the earmark log', cmd = log.show })
+  A({ name = 'help', desc = 'every earmark key, grouped', modes = { n = function() require('earmark.ui.keys').open() end } })
 end
 
 local function guard(where, fn)
@@ -1140,17 +1141,19 @@ function M.setup(opts)
       return a and a.complete and a.complete(args) or {}
     end,
   })
-  -- which-key: name the <leader>m group so the prefix doesn't show as "+prefix"
-  local uses_prefix = false
-  for _, lhs in pairs(config.options.keys or {}) do
-    if type(lhs) == 'string' and vim.startswith(lhs, '<leader>m') then uses_prefix = true end
-  end
-  if uses_prefix then
+  -- which-key: name the <leader>m group (else it shows as "+prefix"), and give every key a
+  -- plain description and its group's icon
+  if config.options.keys then
     vim.schedule(function()
       local ok, wk = pcall(require, 'which-key')
-      if ok and type(wk.add) == 'function' then
-        pcall(wk.add, { { '<leader>m', group = 'earmark', icon = { icon = '󰃉', color = 'yellow' } } })
+      if not (ok and type(wk.add) == 'function') then return end
+      local spec = {}
+      for _, lhs in pairs(config.options.keys) do
+        if type(lhs) == 'string' and vim.startswith(lhs, '<leader>m') and #spec == 0 then
+          spec[1] = { '<leader>m', group = 'earmark', icon = { icon = '󰃉', color = 'yellow' } }
+        end
       end
+      pcall(wk.add, vim.list_extend(spec, require('earmark.ui.keys').which_key_spec()))
     end)
   end
   -- Buffers loaded before setup (e.g. the file Neovim was started with).

@@ -56,6 +56,7 @@ M.defaults = {
     add_value = '<leader>ma', -- add another label to it
     rename = '<leader>mr', -- name its label for this file (empty input clears)
     palette = '<leader>mc', -- the set's colours as big labelled patches; <CR> picks one
+    help = '<leader>m?', -- every earmark key, grouped (<CR> runs one)
   },
   -- The label prompt (`gh` without a count).
   prompt = {

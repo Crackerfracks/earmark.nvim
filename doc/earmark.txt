@@ -60,6 +60,7 @@ or `keys = false` to drop them all. Each action also has a <Plug> mapping
 named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
 `<Plug>(earmark-next-same)`.
 
+Annotate~
 `{count}gh{motion}`  Annotate the motion with label {count} of the current
                    set (`3ghiw`, `12gh$`). Without a count the label prompt
                    opens (|earmark-prompt|). `.` repeats with the same label.
@@ -67,15 +68,34 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
 `{Visual}{count}gh`  Annotate the selection. A blockwise selection makes one
                    annotation per line.
 `{count}ghh`         Annotate the line.                       *earmark-line*
+`<leader>mo`         Give every other occurrence of the annotated text the
+                   same labels.                         *earmark-occurrences*
+
+Change the annotation under the cursor~
 `<leader>ml`         Change the label of the annotation under the cursor
                    ({count} picks among overlapping ones).  *earmark-relabel*
 `<leader>ma`         Add another label to it.               *earmark-add_value*
 `<leader>mr`         Name (or rename) its label for this file; an empty name
                    clears it.                               *earmark-rename*
+`<leader>mg{motion}` Move the annotation under the cursor onto the motion
+`{Visual}<leader>mg` (or the selection); its note and labels stay.
+                                                            *earmark-regrow*
 `<leader>mx`         Erase the annotation under the cursor; in Visual mode,
                    every annotation in the selection.        *earmark-erase*
 `<leader>mX`         Erase every annotation in the buffer.   *earmark-clear*
 `<leader>mu`         Restore the most recently erased.     *earmark-restore*
+
+Notes and tags~
+`<leader>mm`         Open or close the note of the annotation under the
+                   cursor ({count} picks among overlaps).     *earmark-note*
+`<leader>mt`         Add or remove tags of the annotation.       *earmark-tags*
+`<leader>mi`         Show the hover now and enter it (scroll; `q` closes).
+                                                              *earmark-peek*
+`<leader>mh`         Automatic hover on or off.        *earmark-toggle_hover*
+`<leader>mv`         Show or hide #tags at the ends of lines (hidden at first).
+                                                 *earmark-toggle_indicators*
+
+Move~
 `<leader>mn`         Next annotation (wraps; {count} skips).    *earmark-next*
 `<leader>mN`         Previous annotation.                       *earmark-prev*
 `<leader>m]`         Next annotation with the label under the cursor.
@@ -83,43 +103,41 @@ named `<Plug>(earmark-<name>)` with `_` written as `-`, e.g.
 `<leader>m[`         Previous one with that label.         *earmark-prev_same*
 `<leader>mj`         Jump labels on every visible annotation (flash.nvim;
                    without it, the picker).                   *earmark-jump*
+
+Find and review~
 `<leader>mp`         Pick an annotation in this file.           *earmark-pick*
 `<leader>mP`         Pick an annotation anywhere in the project.
                                                           *earmark-pick_all*
+`<leader>mq`         This file's annotations into the quickfix list.
+                                                                *earmark-qf*
 `<leader>md`         Review stale, ambiguous and detached annotations.
                                                             *earmark-review*
 `{Visual}<leader>mR` Attach the annotation chosen in the review list to the
                    selection.                             *earmark-reanchor*
-`<leader>mq`         This file's annotations into the quickfix list.
-                                                                *earmark-qf*
 `<leader>mD`         Compare an annotation's original text with its current
                    text.                                      *earmark-diff*
-`<leader>me`         Export this file's annotations to Markdown.
-                                                            *earmark-export*
-`<leader>mo`         Give every other occurrence of the annotated text the
-                   same labels.                         *earmark-occurrences*
-`<leader>mg{motion}` Move the annotation under the cursor onto the motion
-`{Visual}<leader>mg` (or the selection); its note and labels stay.
-                                                            *earmark-regrow*
-`<leader>mz`         Promote the annotation to a zk note, or open the note it
-                   has; in a note, list the annotations linked to it
-                   (|earmark-zk-notes|).                        *earmark-zk*
+
+Label sets~
+`<leader>ms`         Switch to the next label set; a popup shows its colours.
+                                                         *earmark-cycle_set*
+`<leader>mS`         Choose the label set from a list.      *earmark-pick_set*
 `<leader>mc`         The palette: every label of the set as a big colour patch,
                    with your name for it, its colour name, hex and uses here.
                    <CR> makes it the label `gh` offers first; digits jump to
                    a key; r names it; <Tab> <S-Tab> switch sets.
                                                            *earmark-palette*
-`<leader>ms`         Switch to the next label set; a popup shows its colours.
-                                                         *earmark-cycle_set*
-`<leader>mS`         Choose the label set from a list.      *earmark-pick_set*
-`<leader>mm`         Open or close the note of the annotation under the
-                   cursor ({count} picks among overlaps).     *earmark-note*
-`<leader>mi`         Show the hover now and enter it (scroll; `q` closes).
-                                                              *earmark-peek*
-`<leader>mh`         Automatic hover on or off.        *earmark-toggle_hover*
-`<leader>mt`         Add or remove tags of the annotation.       *earmark-tags*
-`<leader>mv`         Show or hide #tags at the ends of lines (hidden at first).
-                                                 *earmark-toggle_indicators*
+
+Export and zk~
+`<leader>me`         Export this file's annotations to Markdown.
+                                                            *earmark-export*
+`<leader>mz`         Promote the annotation to a zk note, or open the note it
+                   has; in a note, list the annotations linked to it
+                   (|earmark-zk-notes|).                        *earmark-zk*
+`<leader>m?`         Every key above in one float, grouped the same way and
+                   showing your own mappings; <CR> on a row runs it, `q`
+                   closes. Also `:Earmark help`. With which-key installed,
+                   each key gets a short description and its group's icon.
+                                                              *earmark-help*
 
 ==============================================================================
 4. THE LABEL PROMPT                                           *earmark-prompt*
@@ -240,7 +258,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
     peek note tags toggle_hover toggle_indicators
     erase clear restore next prev next_same prev_same jump
     relabel add_value rename cycle_set pick_set palette
-    review diff export occurrences zk
+    review diff export occurrences zk help
                        the same as the keys in |earmark-keys|
     zk new             make a new zk note even if the annotation has one
     zk link            link the annotation to a note picked from `zk list`
