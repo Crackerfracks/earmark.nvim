@@ -152,6 +152,8 @@ local function live_pos(buf, S, id)
   local m = api.nvim_buf_get_extmark_by_id(buf, M.ns, ext, { details = true })
   if not m[1] or (m[3] and m[3].invalid) then return nil end
   local s, e = { m[1], m[2] }, { m[3].end_row or m[1], m[3].end_col or m[2] }
+  -- a whole-buffer replace can leave a multi-line mark inverted (start after its end)
+  if s[1] > e[1] or (s[1] == e[1] and s[2] > e[2]) then return nil end
   local growing = S.grow and S.grow[id]
   if s[1] == e[1] and s[2] == e[2] and S.annos[id].quote ~= '' and not growing then return nil end
   return s, e
@@ -197,6 +199,14 @@ end
 --- Record the current text and every live annotation's position in it. Also refreshes each
 --- annotation's quote/context/status from the live text.
 function M.refresh_snapshot(buf, S)
+  -- extmarks broken since the last snapshot (e.g. a save or an annotation right after a
+  -- whole-buffer replace, before the debounced repair) are repaired while it can place them
+  for id, a in pairs(S.annos) do
+    if a.status ~= 'detached' and S.snap.pos[id] and not live_pos(buf, S, id) then
+      M.repair(buf, S)
+      break
+    end
+  end
   local lines = lines_of(buf)
   local t = anchor.text(lines)
   local pos = {}
@@ -381,14 +391,17 @@ local function load(buf, S)
   end
   local snap_path = S.doc.snap
   local lines = lines_of(buf)
-  if not rec and S.doc.kind == 'file' and not (#lines == 1 and lines[1] == '') then
-    local moved = store.find_renamed(S.doc, lines)
+  if not rec and S.doc.kind == 'file' then
+    local rerooted = store.find_rerooted(S.doc)
+    local moved = rerooted or (not (#lines == 1 and lines[1] == '') and store.find_renamed(S.doc, lines))
     if moved then
       rec = store.read(moved)
       if rec then
         S.moved_from = moved
         snap_path = store.snap_path(moved)
-        vim.notify('earmark: annotations followed a renamed file (' .. vim.fs.basename(moved) .. ')')
+        if not rerooted then
+          vim.notify('earmark: annotations followed a renamed file (' .. vim.fs.basename(moved) .. ')')
+        end
       end
     end
   end
@@ -425,6 +438,10 @@ local function load(buf, S)
   M.repair(buf, S) -- re-attach anything detached whose text is present
   M.refresh_snapshot(buf, S)
   if S.moved_from then
+    -- a buffer still open on the old path (renamed outside Neovim) must not write it back
+    for _, other in pairs(M.state) do
+      if other ~= S and other.doc.record == S.moved_from then other.readonly = 'its record moved to ' .. S.doc.record end
+    end
     M.save(buf)
     store.write(S.moved_from, nil)
     store.write_snapshot(store.snap_path(S.moved_from), nil)
@@ -443,15 +460,15 @@ function M.get(buf, opts)
   local S = M.state[buf]
   if S then return S end
   if opts and opts.no_create then return nil end
+  -- not before its text is read: an empty state would stay empty and save over the record
+  if not api.nvim_buf_is_loaded(buf) then return nil end
   local doc = store.doc(buf)
   if not doc then return nil end
   S = { doc = doc, annos = {}, ext = {}, by_ext = {}, swatch = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
   M.state[buf] = S
-  if api.nvim_buf_is_loaded(buf) then
-    load(buf, S)
-    if not S.snap.lines[1] then M.refresh_snapshot(buf, S) end
-    M.track(buf, S)
-  end
+  load(buf, S)
+  if not S.snap.lines[1] then M.refresh_snapshot(buf, S) end
+  M.track(buf, S)
   return S
 end
 
