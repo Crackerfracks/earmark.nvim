@@ -19,7 +19,7 @@ local function add(level, msg, ...)
   if #M.entries > M.max then table.remove(M.entries, 1) end
   if level >= 3 then
     local path = M.file()
-    vim.fn.mkdir(vim.fs.dirname(path), 'p')
+    pcall(vim.fn.mkdir, vim.fs.dirname(path), 'p') -- (an unusable storage_dir must not throw here)
     local f = io.open(path, 'a')
     if f then
       f:write(line, '\n')

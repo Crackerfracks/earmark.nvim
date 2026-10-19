@@ -347,7 +347,7 @@ end
 function M.load(opts, root)
   if root ~= nil then M.root = root or nil end
   local previous = M.current
-  M.order, M.by_name, M.files, M.errors = {}, {}, {}, {}
+  M.order, M.by_name, M.files, M.errors, M.variants = {}, {}, {}, {}, {}
   local builtin = require('earmark.builtin_sets')
   local function add(name, spec, scope_dir)
     if type(spec) == 'string' and builtin[spec] then spec = builtin[spec] end
@@ -364,7 +364,14 @@ function M.load(opts, root)
       return normalize(name, spec)
     end)
     if not ok then return report(name, spec, set) end
-    if not M.by_name[name] then M.order[#M.order + 1] = name end
+    local old = M.by_name[name]
+    if set.files and old and old.files then
+      -- the same name for other files (review.md in two review folders): keep both, and
+      -- M.pick_variants puts the one for the file in use under the name
+      M.variants[name] = M.variants[name] or { old }
+      table.insert(M.variants[name], set)
+    end
+    if not old then M.order[#M.order + 1] = name end
     M.by_name[name] = set
   end
   --- The sets of one place, a set its neighbours extend before them (in any file order);
@@ -479,6 +486,11 @@ function M.visible(name, path)
   local set = M.by_name[name]
   if not set then return false end
   if set.expires and set.expires < today() then return false end
+  return M.for_file(set, path)
+end
+
+--- Whether `set` applies to the file at `path`: a general set always does.
+function M.for_file(set, path)
   if not set.files then return true end
   if not path or path == '' then return false end
   for _, g in ipairs(set.files) do
@@ -489,7 +501,25 @@ function M.visible(name, path)
   return false
 end
 
-local function path_of(buf)
+--- Sets of one name for different files: put the one for the file at `path` under the
+--- name. Returns true if one was swapped in (what's drawn with it needs drawing again).
+function M.pick_variants(path)
+  if not path then return false end
+  local swapped = false
+  for name, list in pairs(M.variants or {}) do
+    if not M.for_file(M.by_name[name], path) then
+      for _, set in ipairs(list) do
+        if M.for_file(set, path) then
+          M.by_name[name], swapped = set, true
+          break
+        end
+      end
+    end
+  end
+  return swapped
+end
+
+function M.path_of(buf)
   buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
   if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= '' then return nil end
   local name = vim.api.nvim_buf_get_name(buf)
@@ -499,7 +529,8 @@ end
 --- The sets offered in buffer `buf` (default: current), in order: those for this file
 --- first, then the general ones. Sets for other files and expired ones are left out.
 function M.list(buf)
-  local path = path_of(buf)
+  local path = M.path_of(buf)
+  M.pick_variants(path)
   local own, general = {}, {}
   for _, n in ipairs(M.order) do
     if M.visible(n, path) then
@@ -511,11 +542,13 @@ end
 
 --- On entering `buf`: a set made for this file becomes the current one (unless it says
 --- `auto = false`); leaving for a file without one brings back the set used before.
---- Returns true if the current set changed.
+--- Returns true if the current set changed, and true as a second value if a set of the
+--- same name for this file was swapped in (M.pick_variants).
 function M.focus(buf)
-  local path = path_of(buf)
+  local path = M.path_of(buf)
+  local swapped = M.pick_variants(path)
   -- only on arriving in another file: a set you picked by hand here stays
-  if not path or path == M.focused then return false end
+  if not path or path == M.focused then return false, swapped end
   M.focused = path
   local cur = M.by_name[M.current]
   local here
@@ -526,20 +559,20 @@ function M.focus(buf)
       break
     end
   end
-  if cur and cur.files and M.visible(M.current, path) then return false end -- already on one for here
+  if cur and cur.files and M.visible(M.current, path) then return false, swapped end -- already on one for here
   if here then
     if not (cur and cur.files) then M.general = M.current end
     M.current = here
-    return true
+    return true, swapped
   end
   if cur and (cur.files or not M.visible(M.current, path)) then
     local back = M.general and M.visible(M.general, path) and M.general or M.list(buf)[1]
     if back and back ~= M.current then
       M.current = back
-      return true
+      return true, swapped
     end
   end
-  return false
+  return false, swapped
 end
 
 function M.apply_highlights()

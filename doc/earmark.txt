@@ -399,7 +399,10 @@ A record (schema version 2) holds the annotations, their notes and tags,
 label names for that document, and a fingerprint of the text. The text itself
 is a sibling snapshot under `snap/`, gitignored inside projects. Writes are
 atomic; a record that cannot be parsed is never overwritten. Version 1
-records are read and rewritten as version 2 on the next save.
+records are read and rewritten as version 2 on the next save. Records are not
+merged: when two Neovim instances annotate one file, the last to save wins
+(`:Earmark reload` reads what the other saved). When the root changes (a root
+marker added or removed), a file's record moves on its next open.
 
 Re-finding text, in order: the diff of the snapshot against the current
 text; the exact text with the most similar surroundings; the closest fuzzy
