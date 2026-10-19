@@ -941,3 +941,7 @@ present, otherwise clones it into `deps/`. `make deps` also fetches flash.nvim a
 so their tests run instead of being skipped. `make demo` builds the demo project described above. The
 docs test checks that every default key and subcommand is in this README and in
 `doc/earmark.txt`, and that the help file's tags are valid.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
