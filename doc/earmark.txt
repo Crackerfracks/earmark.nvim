@@ -414,10 +414,11 @@ the review list offers the candidates.
 
 Positions are 0-based `{ row, col }` byte columns, spans end-exclusive; buf 0
 is the current buffer. A value is
-`{ set = 'vivid', label = '3', choice = 'b'?, text = '...'? }`.
+`{ set = 'vivid', label = '3', choice = 'b'?, text = '...'? }`. Annotations
+and tables you get back are copies: changing them changes nothing.
 
 earmark.annotate({buf}, {s}, {e}, {value})              *earmark.annotate()*
-    Add an annotation; returns it.
+    Add an annotation; returns it, or nil when the span is empty.
 earmark.list({buf})                                         *earmark.list()*
     `{ { annotation = a, s = {row, col}, e = {row, col} }, ... }` in order;
     s and e are nil when detached.
@@ -425,6 +426,7 @@ earmark.at({buf}, {pos})                                      *earmark.at()*
     Annotations at {pos} (default: cursor), innermost first, in the same
     shape as |earmark.list()|.
 earmark.get({buf}, {id})                                     *earmark.get()*
+    The annotation, or nil when it isn't there.
 earmark.set_note({buf}, {id}, {text})                   *earmark.set_note()*
     nil or '' clears the note.
 earmark.set_tags({buf}, {id}, {tags})                   *earmark.set_tags()*
@@ -435,6 +437,13 @@ earmark.restore({buf})                                   *earmark.restore()*
 earmark.rename_label({buf}, {value}, {name})        *earmark.rename_label()*
 earmark.names({buf})                                       *earmark.names()*
     `{ ['vivid/3'] = 'Vague' }`
+earmark.display_name({buf}, {value})                *earmark.display_name()*
+    The name {value} goes by in {buf}: the document's name for its label,
+    else the label's own name (a numbered label's is its key), then its
+    choice: `'Accuracy · b Minor issue'`.
+earmark.label({value})                                     *earmark.label()*
+    `{ set, key, name, color, desc, tags }` of the value's label, or nil when
+    there is no such label.
 earmark.export({buf}, {opts})                             *earmark.export()*
     Markdown lines (opts as in `export`).
 earmark.pick({opts})                                        *earmark.pick()*
@@ -464,7 +473,9 @@ Anything not listed here is internal and may change.
 `EarmarkChanged` for every change, and one of `EarmarkAdd`, `EarmarkUpdate`,
 `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`, `EarmarkNote`,
 `EarmarkLoad`, `EarmarkZk` (an annotation was linked to a zk note, or
-unlinked).
+unlinked). `ids` is nil for `EarmarkLoad`, `EarmarkRepair` (an edit
+detached, re-attached or changed the status of annotations) and a label's
+name or colour changing. Setting what is already there fires nothing.
 >lua
   require('earmark').on('Note', function(d) print(d.buf, vim.inspect(d.ids)) end)
 <

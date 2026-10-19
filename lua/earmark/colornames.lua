@@ -67,8 +67,10 @@ function M.for_set(hexes)
   local out = {}
   if o == false then return out end
   local pairs_ = {}
+  local first = {} -- hex -> index of its first use: the same colour gets the same name
   for i, hex in ipairs(hexes) do
-    if valid(hex) then
+    if valid(hex) and not first[hex:lower()] then
+      first[hex:lower()] = i
       for _, c in ipairs(M.nearest(hex:lower(), 12)) do
         pairs_[#pairs_ + 1] = { i = i, name = c.name, d = c.d }
       end
@@ -86,7 +88,7 @@ function M.for_set(hexes)
   end
   -- colours whose few nearest names were all taken: the nearest name still free
   for i, hex in ipairs(hexes) do
-    if not out[i] and valid(hex) then
+    if not out[i] and valid(hex) and first[hex:lower()] == i then
       for _, c in ipairs(M.nearest(hex:lower(), 200)) do
         if not taken[c.name] then
           out[i], taken[c.name] = c.name, true
@@ -96,6 +98,7 @@ function M.for_set(hexes)
     end
   end
   for i, hex in ipairs(hexes) do
+    if valid(hex) and first[hex:lower()] ~= i then out[i] = out[first[hex:lower()]] end
     if type(o) == 'function' and valid(hex) then
       local ok, name = pcall(o, hex:lower())
       if ok and type(name) == 'string' and name ~= '' then out[i] = name end

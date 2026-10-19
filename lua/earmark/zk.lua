@@ -136,7 +136,7 @@ function M.export_link(buf, a, dest_dir)
   local title = path and M.title(path) or vim.fn.fnamemodify(a.zk, ':t:r')
   local link = a.zk
   if path and dest_dir then link = relative(real(dest_dir), real(path)) end
-  return ('→ [%s](%s)'):format(title, target(link))
+  return ('→ [%s](%s)'):format(title:gsub('[%[%]]', '\\%0'), target(link))
 end
 
 ---------------------------------------------------------------------------
@@ -162,7 +162,9 @@ end
 
 --- The note's first line, else the start of the quote.
 function M.title_for(a)
-  local t = a.note and a.note:match('^%s*#*%s*([^\n]+)')
+  -- "# Heading" loses its mark; "#tag" at the start is a tag like any other
+  local t = a.note and a.note:match('^%s*([^\n]+)')
+  t = t and t:gsub('^#+%s+', '')
   -- #tags and @mentions go to the tags, not the title
   t = t and vim.trim((' ' .. t):gsub('([^%w_&/#])#%a[%w_/%-%.]*', '%1'):gsub('([^%w_%.])@%w[%w_%-]*', '%1')
     :gsub('%s+', ' ')) or ''
@@ -206,6 +208,8 @@ function M.compose(buf, a, nb)
   dir = dir:gsub('^%./', ''):gsub('/+$', '')
   if dir == '' then dir = '.' end
   local note_dir = vim.fs.normalize(nb .. '/' .. dir)
+  -- a/../b is b; a folder outside the notebook stays as it is (create refuses it)
+  if not is_abs(dir) then dir = vim.fs.relpath(nb, note_dir) or dir end
   local line = s and (s[1] + 1) or nil
 
   local body = {}
@@ -316,19 +320,42 @@ local function offer_siblings(buf, a, nb, path)
   end)
 end
 
+local busy = {} -- annotation id -> true while zk makes its note
+
+--- Whether zk wrote the note at `path` for annotation `a` just now. With a `{{slug title}}`
+--- file name zk prints the path of a note that already has the name and writes nothing.
+local function written(path, a, started)
+  if not opts_().template then
+    -- earmark's frontmatter has the id
+    local ok, lines = pcall(vim.fn.readfile, path, '', 30)
+    return ok and table.concat(lines, '\n'):find(a.id, 1, true) ~= nil
+  end
+  local st = uv.fs_stat(path)
+  return st ~= nil and st.mtime.sec >= started - 1
+end
+
 local function create(buf, id, opts, cb)
   local a = buffer.annotation(buf, id)
   if not a then return cb('no annotation ' .. tostring(id)) end
+  if busy[id] then return cb('busy') end
   local nb, err = M.notebook(buf)
   if not nb then
     notify(err, vim.log.levels.WARN)
     return cb(err)
   end
   local note = M.compose(buf, a, nb)
+  if is_abs(note.dir) or not vim.fs.relpath(nb, vim.fs.normalize(nb .. '/' .. note.dir)) then
+    err = ('zk.dir %s is outside the notebook %s'):format(note.dir, vim.fn.fnamemodify(nb, ':~'))
+    notify(err, vim.log.levels.ERROR)
+    return cb(err)
+  end
   -- zk refuses a folder that doesn't exist yet (zk.dir = 'npcs' on the first note)
   if note.dir ~= '.' then pcall(vim.fn.mkdir, nb .. '/' .. note.dir, 'p') end
   local argv, stdin = M.command(note, nb)
+  busy[id] = true
+  local started = os.time()
   M._run(argv, { cwd = nb, stdin = stdin }, function(res)
+    busy[id] = nil
     if not succeeded(res, 'create the note') then return cb(res.missing and MISSING or vim.trim(res.stderr or '')) end
     local out = vim.split(vim.trim(res.stdout or ''), '\n')
     local path = vim.trim(out[#out] or '')
@@ -338,6 +365,15 @@ local function create(buf, id, opts, cb)
     end
     if not is_abs(path) then path = nb .. '/' .. path end
     path = real(path)
+    if not uv.fs_stat(path) then
+      notify(('zk did not write a note (it said: %s)'):format(out[#out]), vim.log.levels.ERROR)
+      return cb('no note')
+    end
+    if not written(path, a, started) then
+      notify(('zk gave back %s, a note that already has that file name; not linked (change the title, or '
+        .. 'the filename in your zk config)'):format(vim.fn.fnamemodify(path, ':~:.')), vim.log.levels.ERROR)
+      return cb('file name taken', path)
+    end
     if not api.nvim_buf_is_valid(buf) or not buffer.annotation(buf, id) then return cb('annotation gone', path) end
     set_link(buf, { id }, nb, path)
     local open = opts.open
@@ -400,10 +436,12 @@ function M.link(buf, id)
     end
     local items = {}
     for _, n in ipairs(notes) do
-      local path = n.absPath or (n.path and (nb .. '/' .. n.path))
+      -- skip what isn't a note (JSON null reads as vim.NIL, which is truthy)
+      local rel = type(n) == 'table' and type(n.path) == 'string' and n.path or nil
+      local path = type(n) == 'table' and type(n.absPath) == 'string' and n.absPath or (rel and (nb .. '/' .. rel))
       if path then
         local title = (type(n.title) == 'string' and n.title ~= '') and n.title or vim.fn.fnamemodify(path, ':t:r')
-        items[#items + 1] = { text = title .. '  ' .. (n.path or path), file = path, pos = { 0, 0 } }
+        items[#items + 1] = { text = title .. '  ' .. (rel or path), file = path, pos = { 0, 0 } }
       end
     end
     require('earmark.ui.picker').pick(items, {
