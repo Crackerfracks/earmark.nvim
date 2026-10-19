@@ -1,8 +1,8 @@
 # Asking for feedback through earmark (for agents)
 
-Stephen reviews plans, drafts, option lists and demo files in Neovim with earmark. When you
-hand him a file to review, you can give it a label set made for that review, so the labels
-he needs are already there when he opens it.
+For coding agents that hand a person files to review in Neovim with earmark (plans, drafts,
+option lists, demo notes). You can give a file a label set made for that review, so the
+labels they need are already there when they open it.
 
 ## Default: nothing to do
 
@@ -42,13 +42,13 @@ Rules:
   sets for finished reviews don't pile up. Existing annotations keep their colours.
 - The set applies to `<stem>.*` in its folder. For other files use `"files": ["*.md"]`
   (globs relative to the set file's folder). Don't make one set apply to a whole project
-  unless Stephen asks.
+  unless the user asks.
 - Don't name it after a general set (`feedback`, `vivid`): it would be renamed.
-- JSON only. Lua set files need Stephen to `:trust` them.
+- JSON only. Lua set files need the user to `:trust` them.
 
 ## Reading the feedback back
 
-Stephen exports with `<leader>me` (a Markdown list grouped by label, with notes and tags;
+The user exports with `<leader>me` (a Markdown list grouped by label, with notes and tags;
 written to `<root>/.earmark/export/`, or next to the file with
 `export.location = 'beside'`). Annotations are also stored as JSON under
 `<root>/.earmark/docs/`; `require('earmark').list(buf)` reads them from Lua.

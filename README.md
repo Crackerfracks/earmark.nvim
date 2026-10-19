@@ -1,28 +1,32 @@
 # earmark.nvim
 
-Highlight and label spans of text in Neovim, and keep those annotations attached to the
-text, even while the text keeps changing.
+Highlight spans of text in Neovim with coloured labels, add notes and tags to them, and
+keep them attached to the right text while the file changes.
 
-![3ghiw marks a word with label 3; 12gh$ marks to the end of the line](docs/demos/annotate-count.gif)
-![Overlapping annotations: the hover lists them innermost first](docs/demos/hover-overlap.gif)
+![3ghiw gives a word label 3; 12gh$ marks to the end of the line with label 12](docs/demos/annotate-count.gif)
 
-Every feature, with clips and the keys to try: [docs/demos/index.html](docs/demos/index.html).
+- **Labels come from sets.** Five generated palettes with keys 1 to 99, a `feedback` set
+  for reviewing someone's work, and any sets you define.
+- **A count picks the label:** `3ghiw` marks a word with label 3. Without a count, a
+  prompt opens next to the text; type a key or part of a label's name and the text shows
+  the colour as you type.
+- **Annotations follow the text.** Typing, deleting, undo, formatters that rewrite the
+  buffer, `:e!` and edits made outside Neovim all move them with their text. If the text is
+  rewritten the annotation is marked **stale**; if it is deleted it is **detached** and comes
+  back when the text does. Nothing is dropped silently.
+- **Notes, tags and a hover.** Each annotation can have a Markdown note with `#tags`. Rest
+  the cursor on it to see its labels, name, tags and note.
+- **Plain JSON storage** in your project (`<root>/.earmark/`), so annotations can be
+  committed with the files they describe.
+- **zk notes:** turn an annotation into a note in a [zk](https://github.com/zk-org/zk)
+  notebook, with a link back to the line.
 
-- **Labels come from sets.** The default sets are five generated palettes with keys 1–99,
-  and you can define your own.
-- **A count picks the label:** `3ghiw` marks a word with label 3.
-- **No count opens a small prompt** next to the text: type a key, a name or part of one,
-  see the colour live on the text, press Enter. Tab names the label as you go.
-- **Annotations survive what usually breaks highlights:** live edits, formatters
-  rewriting the buffer, `:e!`, edits made outside Neovim, renamed files, and undo.
-  - Changing its first or last words (`cw`, `ciw`, `s`, `C` …) keeps the new words in it.
-  - When the annotated text is rewritten, the annotation is marked **stale**.
-  - When the text is deleted, it is **detached**, never dropped. It comes back if the text
-    returns (undo, paste).
-- **Plain JSON storage** inside your project (`<root>/.earmark/`), so annotations travel
-  with the repo or notebook.
+![gh without a count opens the prompt; the text takes the colour while you type](docs/demos/prompt.gif)
 
-Requires Neovim 0.11+. Full reference: `:help earmark`. Something off? `:checkhealth earmark`.
+![Typing, deleting and undo: the annotations move with their text](docs/demos/live-edits.gif)
+
+Requires Neovim 0.11 or newer. Full reference: `:help earmark`. If something doesn't work,
+run `:checkhealth earmark`.
 
 ## Install (lazy.nvim)
 
@@ -30,7 +34,7 @@ Requires Neovim 0.11+. Full reference: `:help earmark`. Something off? `:checkhe
 { 'Crackerfracks/earmark.nvim', opts = {} }
 ```
 
-From a local checkout (how Stephen's config should load it while it's private):
+From a local checkout:
 
 ```lua
 {
@@ -44,7 +48,7 @@ From a local checkout (how Stephen's config should load it while it's private):
 }
 ```
 
-## Quickstart (60 seconds)
+## Quickstart
 
 1. Put the cursor on a word and type `3ghiw`. The word gets label 3 of the current set.
 2. Type `ghip` without a count: a prompt opens beside the paragraph. Type `12`, watch the
@@ -54,8 +58,8 @@ From a local checkout (how Stephen's config should load it while it's private):
 5. `<leader>mp` lists every annotation in the file; `<leader>md` lists the ones whose text
    changed or disappeared.
 
-`make demo` writes a small annotated project to `/tmp/earmark-demo` and prints the command
-that opens it with this checkout, if you want to look before touching your config.
+To try it without changing your config, run `make demo` in a checkout. It writes a small
+annotated project to `/tmp/earmark-demo` and prints the command that opens it.
 
 ## Use
 
@@ -74,6 +78,43 @@ installed, each key also gets a short description and an icon for its group.
 | `.` | repeat with the same label, no prompt |
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
 
+<details>
+<summary>Clips: annotating</summary>
+
+`7G` then `4ghh`: a whole line
+
+![`7G` then `4ghh`: a whole line](docs/demos/annotate-line.gif)
+
+A Visual selection, then `5gh`
+
+![A Visual selection, then `5gh`](docs/demos/annotate-visual.gif)
+
+A Visual block makes one annotation per line
+
+![A Visual block makes one annotation per line](docs/demos/annotate-block.gif)
+
+`.` repeats with the same label
+
+![`.` repeats with the same label](docs/demos/repeat.gif)
+
+After `3gh`, a hint shows which label the count picked
+
+![After `3gh`, a hint shows which label the count picked](docs/demos/count-hint.gif)
+
+Labels 11 to 99 are shades of 1 to 10
+
+![Labels 11 to 99 are shades of 1 to 10](docs/demos/label-shades.gif)
+
+A second label on the same word: `a` adds it, `r` replaces
+
+![A second label on the same word: `a` adds it, `r` replaces](docs/demos/same-span.gif)
+
+`<leader>mo` gives every other copy of the text the same labels
+
+![`<leader>mo` gives every other copy of the text the same labels](docs/demos/occurrences.gif)
+
+</details>
+
 **Change the annotation under the cursor**
 
 | Keys | Action |
@@ -86,6 +127,39 @@ installed, each key also gets a short description and an icon for its group.
 | `<leader>mX` | erase every annotation in the buffer (restorable) |
 | `<leader>mu` | restore the most recently erased |
 
+<details>
+<summary>Clips: changing annotations</summary>
+
+`<leader>ml` changes the label
+
+![`<leader>ml` changes the label](docs/demos/relabel.gif)
+
+`<leader>ma` adds another label
+
+![`<leader>ma` adds another label](docs/demos/add-label.gif)
+
+`<leader>mr` names the label in this file
+
+![`<leader>mr` names the label in this file](docs/demos/rename.gif)
+
+`<leader>mg` moves the annotation onto another motion
+
+![`<leader>mg` moves the annotation onto another motion](docs/demos/regrow.gif)
+
+`<leader>mx` erases one, `<leader>mu` brings it back
+
+![`<leader>mx` erases one, `<leader>mu` brings it back](docs/demos/erase-restore.gif)
+
+Visual `<leader>mx` erases every annotation in the selection
+
+![Visual `<leader>mx` erases every annotation in the selection](docs/demos/erase-visual.gif)
+
+`<leader>mX` erases everything in the file
+
+![`<leader>mX` erases everything in the file](docs/demos/clear-all.gif)
+
+</details>
+
 **Notes and tags**
 
 | Keys | Action |
@@ -96,6 +170,43 @@ installed, each key also gets a short description and an icon for its group.
 | `<leader>mh` | details when the cursor stops: on / off |
 | `<leader>mv` | `#tags` at the ends of lines: on / off (off at startup) |
 
+<details>
+<summary>Clips: notes, tags and the hover</summary>
+
+`<leader>mm` writes a note; `q` saves
+
+![`<leader>mm` writes a note; `q` saves](docs/demos/note.gif)
+
+`,s` moves the note to a split, `,f` back to a float
+
+![`,s` moves the note to a split, `,f` back to a float](docs/demos/note-split.gif)
+
+Resting the cursor on an annotation shows its details
+
+![Resting the cursor on an annotation shows its details](docs/demos/hover.gif)
+
+Overlapping annotations are listed innermost first
+
+![Overlapping annotations are listed innermost first](docs/demos/hover-overlap.gif)
+
+`<leader>mh` turns the hover off and on
+
+![`<leader>mh` turns the hover off and on](docs/demos/hover-toggle.gif)
+
+`<leader>mi` shows the details now and moves into them
+
+![`<leader>mi` shows the details now and moves into them](docs/demos/peek.gif)
+
+`<leader>mt` adds and removes tags
+
+![`<leader>mt` adds and removes tags](docs/demos/tags.gif)
+
+Pencils for notes; `<leader>mv` shows tags at line ends
+
+![Pencils for notes; `<leader>mv` shows tags at line ends](docs/demos/indicators.gif)
+
+</details>
+
 **Move**
 
 | Keys | Action |
@@ -103,6 +214,23 @@ installed, each key also gets a short description and an icon for its group.
 | `<leader>mn` / `<leader>mN` | next / previous annotation (wraps; `{count}` skips) |
 | `<leader>m]` / `<leader>m[` | next / previous with the label under the cursor |
 | `<leader>mj` | jump labels on every visible annotation ([flash.nvim](https://github.com/folke/flash.nvim); without it, the picker) |
+
+<details>
+<summary>Clips: moving between annotations</summary>
+
+`<leader>mn` and `<leader>mN`
+
+![`<leader>mn` and `<leader>mN`](docs/demos/next-prev.gif)
+
+`<leader>m]` and `<leader>m[` stop only at the same label
+
+![`<leader>m]` and `<leader>m[` stop only at the same label](docs/demos/next-same.gif)
+
+`<leader>mj` with flash.nvim
+
+![`<leader>mj` with flash.nvim](docs/demos/jump.gif)
+
+</details>
 
 **Find and review**
 
@@ -114,6 +242,39 @@ installed, each key also gets a short description and an icon for its group.
 | `{Visual}<leader>mR` | attach the annotation chosen in the review list to the selection |
 | `<leader>mD` | compare an annotation's original text with what it says now |
 
+<details>
+<summary>Clips: finding and reviewing</summary>
+
+`<leader>mp` lists the annotations in this file
+
+![`<leader>mp` lists the annotations in this file](docs/demos/pick.gif)
+
+`<leader>mP` lists them in the whole project
+
+![`<leader>mP` lists them in the whole project](docs/demos/pick-all.gif)
+
+`:Earmark pick_all` with a query
+
+![`:Earmark pick_all` with a query](docs/demos/pick-query.gif)
+
+`<leader>mq` puts this file's annotations in the quickfix list
+
+![`<leader>mq` puts this file's annotations in the quickfix list](docs/demos/qf.gif)
+
+`<leader>md` lists annotations whose text changed or is gone
+
+![`<leader>md` lists annotations whose text changed or is gone](docs/demos/review.gif)
+
+`<leader>mD` shows the original text next to the current text
+
+![`<leader>mD` shows the original text next to the current text](docs/demos/diff.gif)
+
+Visual `<leader>mR` attaches a detached annotation to the selection
+
+![Visual `<leader>mR` attaches a detached annotation to the selection](docs/demos/reanchor.gif)
+
+</details>
+
 **Label sets**
 
 | Keys | Action |
@@ -122,6 +283,35 @@ installed, each key also gets a short description and an icon for its group.
 | `<leader>mS` | choose the label set from a list |
 | `<leader>mc` | the palette: every label of the set as a colour patch with your name for it, its colour's name, hex and uses; `<CR>` makes it the label `gh` offers first, digits jump to a key, `r` names it, `<Tab>` switches sets |
 
+<details>
+<summary>Clips: label sets and colours</summary>
+
+The default labels
+
+![The default labels](docs/demos/default-labels.gif)
+
+`<leader>ms` switches to the next set
+
+![`<leader>ms` switches to the next set](docs/demos/cycle-set.gif)
+
+`<leader>mS` chooses a set from a list
+
+![`<leader>mS` chooses a set from a list](docs/demos/pick-set.gif)
+
+`<leader>mc` shows the set's colours with their names
+
+![`<leader>mc` shows the set's colours with their names](docs/demos/palette.gif)
+
+The same labels on a light colour scheme
+
+![The same labels on a light colour scheme](docs/demos/light-theme.gif)
+
+`:Earmark color` recolours a label in this file
+
+![`:Earmark color` recolours a label in this file](docs/demos/color.gif)
+
+</details>
+
 **Export and zk**
 
 | Keys | Action |
@@ -129,6 +319,19 @@ installed, each key also gets a short description and an icon for its group.
 | `<leader>me` | export this file's annotations to Markdown (asks where; opens it in a split) |
 | `<leader>mz` | make a [zk](https://github.com/zk-org/zk) note from the annotation, or open the note it has; in a note, list the annotations linked to it (see [zk](#zk)) |
 | `<leader>m?` | the key list |
+
+<details>
+<summary>Clips: export and zk</summary>
+
+`<leader>me` writes the annotations to a Markdown file
+
+![`<leader>me` writes the annotations to a Markdown file](docs/demos/export.gif)
+
+`<leader>mz` makes a zk note from an annotation
+
+![`<leader>mz` makes a zk note from an annotation](docs/demos/zk.gif)
+
+</details>
 
 ### The label prompt
 
@@ -142,6 +345,63 @@ colour while you type, and the list under the input narrows as you go:
 Each row shows the label's colour, its key, your name for it and the colour's name
 ("Tangerine"). With a count (`3gh`) there's no prompt; a small hint under the cursor shows
 which label the count picked while you type the motion (`prompt.count_hint`).
+
+| In the prompt | |
+|---|---|
+| `<CR>` | apply the selected label |
+| `<Tab>` | like `<CR>`, then name the label (the name stage); `<Tab>`/`<CR>` there accepts the name |
+| `<S-Tab>` | back to the label stage |
+| `<C-n>` `<C-p>` / `<Down>` `<Up>` (Normal: `j` `k`) | move through candidates |
+| `<C-s>` | try the next label set |
+| `<Esc>` | Normal mode (edit the query with the usual motions); `<Esc>`/`q` again cancels. In the name stage after choosing a label, `<Esc>` applies the label without naming it |
+
+Names are per file, and the project remembers them: once you name label 3 "vague" in one
+file, the first label 3 you use in any other file of that project is called "vague" there
+too (`<root>/.earmark/names.json`, the directory default). Rename or clear it in that file
+with `<leader>mr`. The name stage is pre-filled from what you called the label before: in
+this file, then elsewhere in the project, then anywhere (`<storage_dir>/names.json`). An
+empty name clears it for this file. With `prompt.ask_name = 'first_use'` (default) you are
+asked to name a numbered label the first time you use it in a project; `'always'` and
+`'never'` do what they say.
+
+<details>
+<summary>Clips: the prompt</summary>
+
+The first use of a label asks for a name
+
+![The first use of a label asks for a name](docs/demos/prompt-name.gif)
+
+Empty input offers the last label first
+
+![Empty input offers the last label first](docs/demos/prompt-last.gif)
+
+Typing part of a name
+
+![Typing part of a name](docs/demos/prompt-names.gif)
+
+A digit matches the key, then its shades
+
+![A digit matches the key, then its shades](docs/demos/prompt-shades.gif)
+
+`<C-s>` tries the next label set
+
+![`<C-s>` tries the next label set](docs/demos/prompt-sets.gif)
+
+`<Tab>` names the label; `<S-Tab>` goes back
+
+![`<Tab>` names the label; `<S-Tab>` goes back](docs/demos/prompt-tab.gif)
+
+`<Esc>` switches to Normal mode; `<Esc>` again cancels
+
+![`<Esc>` switches to Normal mode; `<Esc>` again cancels](docs/demos/prompt-normal.gif)
+
+</details>
+
+Annotating exactly the same span again with another label asks first: <kbd>a</kbd> (or
+<kbd>Enter</kbd>) adds the label to it, so both show as an overlap; <kbd>r</kbd> replaces its
+label (as `<leader>ml` does); <kbd>Esc</kbd> cancels. `.` repeats your answer without asking.
+`prompt.confirm_stack = false` always adds, without asking. With a label it already has,
+nothing changes.
 
 ### Colour names
 
@@ -162,29 +422,8 @@ of brighter, so it keeps the same weight. It follows `:colorscheme` and `'backgr
 changes as they happen. The label itself doesn't change (its number, name, colour name and
 hex stay the same); only how it's drawn does. `color_adapt = false` draws the exact colours.
 
-| In the prompt | |
-|---|---|
-| `<CR>` | apply the selected label |
-| `<Tab>` | like `<CR>`, then name the label (the name stage); `<Tab>`/`<CR>` there accepts the name |
-| `<S-Tab>` | back to the label stage |
-| `<C-n>` `<C-p>` / `<Down>` `<Up>` (Normal: `j` `k`) | move through candidates |
-| `<C-s>` | try the next label set |
-| `<Esc>` | Normal mode (edit the query with the usual motions); `<Esc>`/`q` again cancels. In the name stage after choosing a label, `<Esc>` applies the label without naming it |
-
-Names are per file, and the project remembers them: once you name label 3 "vague" in one
-file, the first label 3 you use in any other file of that project is called "vague" there
-too (`<root>/.earmark/names.json`, the directory default). Rename or clear it in that file
-with `<leader>mr`. The name stage is pre-filled from what you called the label before: in
-this file, then elsewhere in the project, then anywhere (`<storage_dir>/names.json`). An
-empty name clears it for this file. With `prompt.ask_name = 'first_use'` (default) you are
-asked to name a numbered label the first time you use it in a project; `'always'` and
-`'never'` do what they say.
-
-Annotating exactly the same span again with another label asks first: <kbd>a</kbd> (or
-<kbd>Enter</kbd>) adds the label to it, so both show as an overlap; <kbd>r</kbd> replaces its
-label (as `<leader>ml` does); <kbd>Esc</kbd> cancels. `.` repeats your answer without asking.
-`prompt.confirm_stack = false` always adds, without asking. With a label it already has,
-nothing changes.
+`:Earmark color #rrggbb` (or `reset`) recolours the label under the cursor in this file
+only.
 
 ### Notes and the hover
 
@@ -226,6 +465,15 @@ it to a selection (`{Visual}<leader>mR`), or erase it.
 `:Earmark scratch` reopens a scratch buffer you annotated earlier, with its text and
 annotations.
 
+<details>
+<summary>Clip: scratch buffers</summary>
+
+`:Earmark scratch` reopens an annotated scratch buffer
+
+![`:Earmark scratch` reopens an annotated scratch buffer](docs/demos/scratch.gif)
+
+</details>
+
 ### Export
 
 `<leader>me` writes a Markdown file with every annotation, grouped by label (with your
@@ -238,8 +486,6 @@ and a function `(buf, ctx) -> path` picks any place. Set
 `export.group_by` to `'position'`, `'tag'` or `'time'`, or `export.format` to a function
 `(list, ctx) -> lines` to write your own body. An annotation with a zk note gets a
 `→ [title](path)` line, with the path relative to the export file.
-`:Earmark color #rrggbb` (or `reset`)
-recolours the label under the cursor in this file only.
 
 ### Indicators
 
@@ -257,16 +503,24 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
   colours and underlined in the outer annotation's colour, so you see where each one starts
   and ends.
 - Where annotations of **the same label** are nested (`this is` with `is` marked again), each
-  inner level is a deeper shade of the same colour, the way highlighter strokes darken where
-  they cross.
+  inner level is a deeper shade of the same colour.
 - An annotation's **second label** is an undercurl in that label's colour. With more labels
   the undercurl is cut into equal runs, one per extra label, so nothing is added to the line
   (`overlap.extra = 'squares'` instead puts a small square `■` per label after the span).
-- **Stale** annotations (text rewritten) are drawn faded (most of the colour drained) and
+- **Stale** annotations (text rewritten) are drawn with much less colour and
   underdashed; **ambiguous** ones are underdotted.
 
 Set `overlap = { style = 'top' }` to turn the mixing off: the smallest span is drawn on
 top.
+
+<details>
+<summary>Picture: overlaps</summary>
+
+![Different labels mixed, the same label nested, extra labels as an undercurl cut into runs, a stale annotation](docs/demos/overlap-looks.png)
+
+</details>
+
+### Commands
 
 `:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log|help}`
 
@@ -301,7 +555,7 @@ require('earmark').setup({
     reanchor = '<leader>mR', qf = '<leader>mq',
     export = '<leader>me', occurrences = '<leader>mo', regrow = '<leader>mg', zk = '<leader>mz',
     relabel = '<leader>ml', add_value = '<leader>ma', rename = '<leader>mr',
-    palette = '<leader>mc',
+    palette = '<leader>mc', help = '<leader>m?',
   },
   prompt = {
     width = 44, -- inner width of the prompt float
@@ -363,6 +617,15 @@ sets = {
 
 A count resolves to the label whose key is that number, else to the label at that position.
 
+<details>
+<summary>Clip: your own set</summary>
+
+A set defined in `setup()`
+
+![A set defined in `setup()`](docs/demos/custom-set.gif)
+
+</details>
+
 ### Label set files
 
 Sets can also live in files, one set per file, named after the file:
@@ -395,6 +658,15 @@ return {
 
 A value then reads `Accuracy · b Minor issue`, and the hover shows its text. `choices` can
 also be a map: `{ a = 'Correct', b = 'Minor issue' }`.
+
+<details>
+<summary>Clip: a set file with questions</summary>
+
+A label that asks a question, then a line of text
+
+![A label that asks a question, then a line of text](docs/demos/set-files.gif)
+
+</details>
 
 A label can carry `tags = { 'option-a' }`: annotating with it adds those tags. A set can
 carry `tags = { 'todo', 'nit' }`: `<leader>mt` lists them first.
@@ -507,6 +779,19 @@ headless, it exits with status 1 if any is detached:
 ```sh
 nvim --headless notes/draft.md -c 'Earmark check' -c q
 ```
+
+<details>
+<summary>Clips: edits made outside Neovim</summary>
+
+Another program rewrites the file; the annotations follow their text
+
+![Another program rewrites the file; the annotations follow their text](docs/demos/external-edit.gif)
+
+An outside edit inside an annotated line
+
+![An outside edit inside an annotated line](docs/demos/external-edit-inline.gif)
+
+</details>
 
 Writes are atomic. A record that can't be parsed is left untouched, and saving for that
 buffer is disabled with a warning. v1 records (snapshot inline) are read as is and rewritten
@@ -637,47 +922,7 @@ names as you type.
 ## Develop
 
 `make test` runs the mini.test suite headless. It uses your lazy.nvim copy of mini.nvim if
-present, otherwise clones it into `deps/`. `make deps` also fetches flash.nvim so the jump
-test runs instead of being skipped. `make demo` builds the demo project described above. The
+present, otherwise clones it into `deps/`. `make deps` also fetches flash.nvim and which-key.nvim
+so their tests run instead of being skipped. `make demo` builds the demo project described above. The
 docs test checks that every default key and subcommand is in this README and in
 `doc/earmark.txt`, and that the help file's tags are valid.
-
-## Status (2026-10-18)
-
-The 2026-10 rebuild plan is done: milestones M0 to M10 landed as PRs #1 to #11, and #12
-fixed what an audit against the old Numhi conversations found. Since then: bug fixes found
-while recording the demos (#13), the demos page (#14, #16 to #18), colour names, the palette
-and the count hint (#15), the same-span question (#19), colours that adapt to light themes
-(#20), new overlap looks (#21), a clearer naming prompt and exports beside the file (#22).
-The plan is in `docs/PLAN.md`.
-
-Decided with Stephen on 2026-10-18 (from his comments on the demos page):
-
-1. Naming: the prompt asks for a name the first time a label is used in a project
-   (`prompt.ask_name = 'first_use'`), and that name then applies in the project's other
-   files (`.earmark/names.json` is committed). The naming step now says plainly what is
-   being named.
-2. Identifier tags are written `@A` in notes and shown as `[A]` at the end of the line;
-   `<leader>mv` shows or hides tags and identifiers (hidden at startup); pencils always show.
-3. Overlaps: mixed colours with the outer colour as underline; a second label is an
-   undercurl and more labels split the undercurl into equal runs (nothing shifts the line);
-   nested levels of one label are deeper shades; stale marks are faded.
-4. The hover header is the label colour as text (`▍ name`), not a filled bar.
-5. Colours adapt to the colour scheme's background (`color_adapt`).
-6. `gh` without a count always opens the prompt; `<CR>` on empty input reuses the last label.
-7. Text snapshots are gitignored, so a fresh clone re-anchors by quote and context only.
-8. Exports go to `<root>/.earmark/export/<project>-<path>.md` by default; `export.location`
-   can put them next to the annotated files too.
-9. Another label on exactly the same span asks first: a adds it (an overlap), r replaces,
-   Esc cancels (`prompt.confirm_stack`); `<leader>ml` replaces directly.
-10. Notes open in a float by default; `picker = 'auto'`; `<leader>ml` with a count picks
-    among overlapping annotations; `<leader>mg` accepts the new text as the annotation's text.
-
-Still open:
-
-- What the statusline shows: the next label, counts, the warning count and the digit row.
-- Storage is JSON only; SQLite and encryption are dropped.
-- An annotation re-placed by a close fuzzy match (one typo) stays "ok" rather than "stale".
-- `<leader>mo` has no one-step undo (erase the extra annotations with `<leader>mx`).
-- Set files are reloaded when Neovim regains focus or you switch buffers (no file watcher).
-- The hover clip on the demos page needs re-recording (it rests on the wrong word).
