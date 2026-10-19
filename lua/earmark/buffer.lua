@@ -195,12 +195,13 @@ end
 ---------------------------------------------------------------------------
 
 --- Record the current text and every live annotation's position in it. Also refreshes each
---- annotation's quote/context/status from the live text.
+--- annotation's quote/context/status from the live text. Returns true if a status changed.
 function M.refresh_snapshot(buf, S)
   local lines = lines_of(buf)
   local t = anchor.text(lines)
   local pos = {}
   local ctx = config.options.context
+  local restatus = false
   for id, a in pairs(S.annos) do
     if a.status ~= 'detached' then
       local s, e = live_pos(buf, S, id)
@@ -213,7 +214,10 @@ function M.refresh_snapshot(buf, S)
           a.status = status_for(a, text)
           a.updated = now()
           -- ok <-> stale changes the highlight group (stale is drawn underdashed)
-          if a.status ~= was then render(buf, S, a, s, e) end
+          if a.status ~= was then
+            render(buf, S, a, s, e)
+            restatus = true
+          end
         end
         -- keep the context as long as it was made (longer where the quote isn't unique)
         local n = math.min(anchor.MAX_CONTEXT + 16, math.max(ctx, #(a.prefix or ''), #(a.suffix or '')))
@@ -223,6 +227,7 @@ function M.refresh_snapshot(buf, S)
     end
   end
   S.snap = { lines = lines, pos = pos }
+  return restatus
 end
 
 --- Repair annotations whose extmarks broke, and try to re-attach detached ones.
@@ -280,8 +285,8 @@ function M.on_change(buf)
   if not S or not api.nvim_buf_is_valid(buf) then return end
   local repaired = M.repair(buf, S)
   -- also keeps quotes and stale status current while text inside spans is edited
-  M.refresh_snapshot(buf, S)
-  if repaired then
+  local restatus = M.refresh_snapshot(buf, S)
+  if repaired or restatus then
     M.schedule_save(buf)
     emit(buf, 'repair', nil)
   end
@@ -436,7 +441,7 @@ local function load(buf, S)
 end
 
 --- State for a buffer, created (and loaded from disk) on first use. Nil if the buffer
---- can't be annotated.
+--- can't be annotated, or isn't loaded (it gets its state when it is: BufReadPost).
 --- @return earmark.BufState?
 function M.get(buf, opts)
   buf = bufnr(buf)
@@ -444,14 +449,12 @@ function M.get(buf, opts)
   if S then return S end
   if opts and opts.no_create then return nil end
   local doc = store.doc(buf)
-  if not doc then return nil end
+  if not doc or not api.nvim_buf_is_loaded(buf) then return nil end
   S = { doc = doc, annos = {}, ext = {}, by_ext = {}, swatch = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
   M.state[buf] = S
-  if api.nvim_buf_is_loaded(buf) then
-    load(buf, S)
-    if not S.snap.lines[1] then M.refresh_snapshot(buf, S) end
-    M.track(buf, S)
-  end
+  load(buf, S)
+  if not S.snap.lines[1] then M.refresh_snapshot(buf, S) end
+  M.track(buf, S)
   return S
 end
 
@@ -712,10 +715,11 @@ function M.set_tags(buf, id, tags)
   if not a then return false end
   local seen, list = {}, {}
   for _, t in ipairs(tags or {}) do
-    if t ~= '' and not seen[t] then
+    if type(t) == 'string' and t ~= '' and not seen[t] then
       seen[t], list[#list + 1] = true, t
     end
   end
+  if vim.deep_equal(list, a.tags or {}) then return true end
   local tags = require('earmark.tags')
   pcall(tags.remember, tags.added(a.tags, list))
   a.tags = #list > 0 and list or nil
@@ -729,6 +733,7 @@ function M.set_values(buf, id, values)
   local S = M.get(buf, { no_create = true })
   local a = S and S.annos[id]
   if not a or not values or #values == 0 then return false end
+  if vim.deep_equal(a.values, values) then return true end
   a.values = values
   local s, e = live_pos(buf, S, id)
   if s then render(buf, S, a, s, e) end
@@ -747,6 +752,7 @@ function M.rename_label(buf, value, name)
   local S = M.get(buf)
   if not S then return false end
   name = (name and name:match('%S')) and vim.trim(name) or nil
+  if S.names[label_key(value)] == name then return true end
   S.names[label_key(value)] = name
   M.schedule_save(buf)
   emit(buf, 'update', nil)

@@ -519,13 +519,14 @@ as v2 on the next save.
 
 Positions are 0-based `{ row, col }` (byte columns), spans end-exclusive; `buf` 0 is the
 current buffer. A value is `{ set = 'vivid', label = '3', choice = 'b'?, text = '…'? }`.
+Annotations and tables you get back are copies: changing them changes nothing.
 
 ```lua
 local em = require('earmark')
-local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })
+local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })  -- nil if the span is empty
 em.list(buf)                -- { { annotation = a, s = {r,c}, e = {r,c} }, ... } sorted; s/e nil when detached
 em.at(buf, pos)             -- same shape, at pos (default cursor), innermost first
-em.get(buf, a.id)
+em.get(buf, a.id)           -- nil if it isn't there
 em.set_note(buf, a.id, 'text #tag')   -- nil or '' clears
 em.set_tags(buf, a.id, { 'todo' })
 em.set_values(buf, a.id, { { set = 'vivid', label = '3' }, { set = 'review', label = 'q1', choice = 'b' } })
@@ -533,6 +534,8 @@ em.erase(buf, { a.id })     -- to the trash
 em.restore(buf)             -- the last erased batch
 em.rename_label(buf, { set = 'vivid', label = '3' }, 'Vague')
 em.names(buf)               -- { ['vivid/3'] = 'Vague' }
+em.display_name(buf, value) -- 'Vague': this file's name for the label, else its own name (or key)
+em.label(value)             -- { set, key, name, color, desc, tags }, or nil if there's no such label
 em.export(buf, { group_by = 'tag' })  -- Markdown lines
 em.pick({ scope = 'project', query = '#todo' })
 em.hover.show() ; em.hover.hide()
@@ -546,7 +549,10 @@ em.zk.path(a, buf)          -- absolute path of the annotation's note, or nil
 Events: `User EarmarkChanged` for every change, plus a specific `User Earmark<Action>`
 (`EarmarkAdd`, `EarmarkUpdate`, `EarmarkErase`, `EarmarkRestore`, `EarmarkRepair`,
 `EarmarkNote`, `EarmarkLoad`, `EarmarkZk`), all with `data = { buf, action, ids }`. `em.on(name, fn)` is
-shorthand for those autocmds. Anything not listed here is internal and may change.
+shorthand for those autocmds. `ids` is nil for `EarmarkLoad`, `EarmarkRepair` (an edit
+detached, re-attached or changed the status of annotations) and a label's name or colour
+changing. Setting what is already there fires nothing. Anything not listed here is
+internal and may change.
 
 ### zk
 
