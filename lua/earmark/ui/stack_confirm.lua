@@ -51,6 +51,7 @@ function M.ask(buf, hits, value, done)
   M.close()
   local lines, marks = build(buf, hits, value)
   local fbuf = api.nvim_create_buf(false, true)
+  vim.b[fbuf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[fbuf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   for _, m in ipairs(marks) do

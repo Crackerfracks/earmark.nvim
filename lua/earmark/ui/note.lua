@@ -258,6 +258,7 @@ function M.open(src_buf, id, opts)
   local old = vim.fn.bufnr(name)
   if old ~= -1 then pcall(api.nvim_buf_delete, old, { force = true }) end
   local buf = api.nvim_create_buf(false, false)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   local E = { buf = buf, src_buf = src_buf, id = id, src_win = api.nvim_get_current_win() }
   api.nvim_buf_set_name(buf, name)
   local bo = vim.bo[buf]

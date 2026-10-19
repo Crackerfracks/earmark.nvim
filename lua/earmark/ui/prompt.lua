@@ -575,6 +575,7 @@ function M.open(opts)
   }
   P.cands = label_cands(P, '')
   P.buf = api.nvim_create_buf(false, true)
+  vim.b[P.buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[P.buf].bufhidden = 'wipe'
   vim.bo[P.buf].swapfile = false
   vim.bo[P.buf].filetype = 'earmark_prompt'

@@ -209,6 +209,7 @@ function M.open(set_name)
   set_name = set_name or sets.current
   if not sets.by_name[set_name] then return end
   local P = { src_buf = src, set = set_name, buf = api.nvim_create_buf(false, true) }
+  vim.b[P.buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[P.buf].bufhidden = 'wipe'
   vim.bo[P.buf].filetype = 'earmark_palette'
   M.active = P

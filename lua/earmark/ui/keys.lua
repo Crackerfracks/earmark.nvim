@@ -320,6 +320,7 @@ function M.open(opts)
   local max_w = vim.o.columns - 4
   local layout = M.layout(max_w, opts.columns)
   local buf = api.nvim_create_buf(false, true)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[buf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(buf, 0, -1, false, layout.lines)
   vim.bo[buf].modifiable = false

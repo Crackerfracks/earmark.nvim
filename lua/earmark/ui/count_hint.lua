@@ -28,6 +28,7 @@ function M.show(value)
   local key = ' ' .. value.label .. ' '
   local text = ' ' .. key .. ' ' .. (name ~= value.label and (name .. '  ') or '') .. (cname or '') .. ' '
   local buf = api.nvim_create_buf(false, true)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[buf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(buf, 0, -1, false, { text })
   api.nvim_buf_set_extmark(buf, M.ns, 0, 1, { end_col = 1 + #key, hl_group = sets.group(value, colors) })

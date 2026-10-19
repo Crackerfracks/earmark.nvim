@@ -417,8 +417,6 @@ T['note: another file opened in its window saves it and closes the editor'] = fu
 end
 
 T['an annotation in an earmark float (the hover, entered) is not saved as a scratch document'] = function()
-  MiniTest.skip("annotating earmark's own float buffers works (no error) but leaves a scratch record behind; "
-    .. 'needs store.doc to skip them (storage area)')
   h.open()
   noted()
   h.cursor(1, 5)

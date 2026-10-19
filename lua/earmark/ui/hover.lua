@@ -191,6 +191,7 @@ function M.show(src_win, hits, focus)
   end
   M.hide()
   local buf = api.nvim_create_buf(false, true)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[buf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   for _, m in ipairs(marks) do
