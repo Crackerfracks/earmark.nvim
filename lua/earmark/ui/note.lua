@@ -230,11 +230,40 @@ local function autocmds(E)
     callback = function()
       if E.switching or E.closing then return end
       if E.layout ~= 'float' then return M.save(E, true) end
+      local function gone()
+        if not E.closing then M.close(E) end
+      end
       -- a float closes once you've left it (not while an operator such as a flash remote
       -- yank runs from inside it)
-      place.on_leave(E.win, function()
-        if not E.closing then M.close(E) end
+      if vim.fn.mode(1):match('^no') then return place.on_leave(E.win, gone) end
+      vim.schedule(function()
+        if E.closing or not (E.win and api.nvim_win_is_valid(E.win)) then return end
+        local cur = api.nvim_get_current_win()
+        if cur == E.win then return end
+        -- another float took focus (an emoji or file picker, a completion or input window
+        -- opened from the note): stay until focus lands in an ordinary window
+        if api.nvim_win_get_config(cur).relative ~= '' then
+          E.away = true
+          return
+        end
+        gone()
       end)
+    end,
+  })
+  api.nvim_create_autocmd('WinEnter', {
+    group = group,
+    callback = function()
+      if not E.away or E.closing then return end
+      local cur = api.nvim_get_current_win()
+      if cur == E.win then
+        E.away = false
+      elseif api.nvim_win_get_config(cur).relative == '' then
+        E.away = false
+        vim.schedule(function()
+          -- (back in the note by then: a picker that hops through a window on its way back)
+          if api.nvim_get_current_win() ~= E.win then M.close(E) end
+        end)
+      end
     end,
   })
 end

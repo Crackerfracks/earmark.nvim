@@ -1,7 +1,8 @@
 -- Asked when a label goes onto text that already has an annotation of exactly that span
 -- (`prompt.confirm_stack`): a small float at the cursor shows the labels already there and
--- waits for one key: a (or <CR>) adds the new label as another one, r replaces the first
--- label, anything else cancels.
+-- waits for one key: a (or <CR>) adds the new label as another one, s makes a separate
+-- annotation on the same text (so it gets its own note), r replaces the first label,
+-- anything else cancels.
 local buffer = require('earmark.buffer')
 local config = require('earmark.config')
 local sets = require('earmark.sets')
@@ -36,8 +37,10 @@ local function build(buf, hits, value)
   if #hits > 1 then line = line .. ('  (and %d more spans)'):format(#hits - 1) end
   lines[1] = line .. ' '
   lines[2] = chip(1, ' New label ', value) .. ' '
-  lines[3] = ' a add as another label   r replace   Esc cancel '
+  lines[3] = ' a add as another label   s separate, own note   r replace   Esc cancel '
   marks[#marks + 1] = { 2, 1, 2, 'Special' }
+  local ss = lines[3]:find('s separate', 1, true) - 1
+  marks[#marks + 1] = { 2, ss, ss + 1, 'Special' }
   local rs = lines[3]:find('r replace', 1, true) - 1
   marks[#marks + 1] = { 2, rs, rs + 1, 'Special' }
   local es = lines[3]:find('Esc', 1, true) - 1
@@ -45,7 +48,7 @@ local function build(buf, hits, value)
   return lines, marks
 end
 
---- Ask what to do; calls `done('add' | 'replace' | nil)`. Waits for a key right away, so
+--- Ask what to do; calls `done('add' | 'separate' | 'replace' | nil)`. Waits for a key right away, so
 --- call it from a scheduled callback, not from inside an operator.
 function M.ask(buf, hits, value, done)
   M.close()
@@ -79,6 +82,7 @@ function M.ask(buf, hits, value, done)
   M.close()
   if not got then return done(nil) end
   if key == 'a' or key == '\r' then return done('add') end
+  if key == 's' then return done('separate') end
   if key == 'r' then return done('replace') end
   done(nil)
 end

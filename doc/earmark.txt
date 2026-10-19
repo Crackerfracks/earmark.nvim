@@ -174,9 +174,11 @@ file, elsewhere in the project, then anywhere. `prompt.ask_name` decides when
 you are asked: "first_use" (default), "always" or "never".
 
 Annotating exactly the same span again with another label asks first: `a` (or
-<CR>) adds that label to it (both show), `r` replaces its label (as
-`<leader>ml` does), <Esc> cancels. `.` repeats the answer without asking.
-`prompt.confirm_stack = false` always adds, without asking.
+<CR>) adds that label to it (both show and share one note), `s` makes a
+separate annotation on the same text with its own note and tags, `r`
+replaces its label (as `<leader>ml` does), <Esc> cancels. `.` repeats the
+answer without asking. `prompt.confirm_stack = false` always adds, without
+asking.
 
                                                        *earmark-color-names*
 Colour names: every colour is named after the nearest of about 700 names from
@@ -200,7 +202,10 @@ how they're drawn. `color_adapt = false` draws the exact colours.
 `<leader>mm` opens the note, a Markdown buffer in a float under the span (an
 empty note starts in Insert mode). `q`, |:w|, <C-s>, leaving the float or
 closing it saves; `<localleader>s` moves it to a split, `<localleader>f`
-back. Clearing all the text removes the note.
+back. Clearing all the text removes the note. The note stays open while a
+float opened from it has focus (an emoji or file picker), so the choice goes
+into the note. When separate annotations cover the same text, `<leader>mm`
+asks which note; a count (`2<leader>mm`) picks without asking.
 
 Write `#tags` and `@identifiers` anywhere in a note and earmark picks them
 up (not inside code or headings). `<leader>mt` adds tags without writing
@@ -210,7 +215,10 @@ The hover appears when the cursor rests on an annotation that has a name,
 a note, tags, more than one label, or a stale or ambiguous status
 (`hover.show_when = 'always'` for every annotation). It stays while you move
 inside the annotation and goes away when you leave, type, scroll or start an
-operator. Overlapping annotations are numbered innermost first.
+operator. Overlapping annotations are numbered innermost first. Moving the
+cursor into the hover (a flash.nvim jump, a click, <C-w>w) onto a note line
+opens that note for editing at the same spot; elsewhere in the hover, <CR>
+opens the note of the annotation under the cursor.
 
 End-of-line indicators show a pencil per note in the label's colour, and
 with `<leader>mv` (or `indicators.tags = true`) the #tags and @identifiers
@@ -417,8 +425,10 @@ is the current buffer. A value is
 `{ set = 'vivid', label = '3', choice = 'b'?, text = '...'? }`. Annotations
 and tables you get back are copies: changing them changes nothing.
 
-earmark.annotate({buf}, {s}, {e}, {value})              *earmark.annotate()*
-    Add an annotation; returns it, or nil when the span is empty.
+earmark.annotate({buf}, {s}, {e}, {value} [, {opts}])   *earmark.annotate()*
+    Add an annotation; returns it, or nil when the span is empty. On exactly
+    the span of an annotation, the label joins that one (second return value
+    "added", or "same" if it has it); `{ separate = true }` makes a new one.
 earmark.list({buf})                                         *earmark.list()*
     `{ { annotation = a, s = {row, col}, e = {row, col} }, ... }` in order;
     s and e are nil when detached.

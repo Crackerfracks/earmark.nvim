@@ -546,11 +546,13 @@ end
 --- is added to it as another label instead (so the two show as an overlap). Returns the
 --- annotation, plus 'added' when it went onto an existing annotation or 'same' when that
 --- annotation had the label already.
-function M.add(buf, s, e, value)
+function M.add(buf, s, e, value, opts)
   local S = M.get(buf)
   if not S then return nil end
   if s[1] == e[1] and s[2] == e[2] then return nil end
-  for id, a in pairs(S.annos) do
+  -- on exactly the span of an annotation, the label joins it, unless `separate` (then it is
+  -- an annotation of its own, with its own note and tags)
+  for id, a in pairs((opts and opts.separate) and {} or S.annos) do
     local ls, le = live_pos(buf, S, id)
     if ls and ls[1] == s[1] and ls[2] == s[2] and le[1] == e[1] and le[2] == e[2] then
       for _, v in ipairs(a.values) do
@@ -614,7 +616,11 @@ function M.find(buf, s, e)
     end
   end
   table.sort(hits, function(x, y)
-    return x.size > y.size
+    if x.size ~= y.size then return x.size > y.size end
+    -- the same size (separate annotations on the same text): the older first, so counts
+    -- and the hover's numbers stay put
+    if (x.a.created or 0) ~= (y.a.created or 0) then return (x.a.created or 0) < (y.a.created or 0) end
+    return x.a.id < y.a.id
   end)
   return hits
 end

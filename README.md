@@ -398,8 +398,9 @@ A digit matches the key, then its shades
 </details>
 
 Annotating exactly the same span again with another label asks first: <kbd>a</kbd> (or
-<kbd>Enter</kbd>) adds the label to it, so both show as an overlap; <kbd>r</kbd> replaces its
-label (as `<leader>ml` does); <kbd>Esc</kbd> cancels. `.` repeats your answer without asking.
+<kbd>Enter</kbd>) adds the label to it, so both show as an overlap and share one note;
+<kbd>s</kbd> makes a separate annotation on the same text, with its own note and tags;
+<kbd>r</kbd> replaces its label (as `<leader>ml` does); <kbd>Esc</kbd> cancels. `.` repeats your answer without asking.
 `prompt.confirm_stack = false` always adds, without asking. With a label it already has,
 nothing changes.
 
@@ -431,13 +432,21 @@ only.
 span (an empty note starts in Insert mode). `q`, `:w`, `<C-s>`, leaving the float or
 closing it any other way saves it; `,s` moves it to a split at the bottom and `,f` back
 (`,` being your `maplocalleader`). Clearing all the text removes the note. Write `#tags`
-and `@identifiers` anywhere in a note; earmark picks them up.
+and `@identifiers` anywhere in a note; earmark picks them up. The note stays open while a
+float you opened from it has focus (an emoji or file picker, say), so what you pick goes
+into the note. When separate annotations cover the same text, `<leader>mm` asks which
+note; `2<leader>mm` opens the second without asking.
 
 When the cursor rests on an annotation that has a name, a note, tags, extra labels or a
 stale/ambiguous status, a small float shows all of that without taking focus. It stays
 while you move inside the annotation and goes away when you leave it, type, scroll or start
 an operator. Overlapping annotations are listed innermost first (①, ②, …). Set
 `hover.show_when = 'always'` to see it on every annotation.
+
+You can move the cursor into the hover with a flash.nvim jump, a mouse click or `<C-w>w`.
+Landing on a line of a note opens that note for editing with the cursor at the same spot;
+landing anywhere else keeps the hover focused, and `<CR>` there opens the note of the
+annotation under the cursor.
 
 ### Finding annotations
 
@@ -812,6 +821,8 @@ Annotations and tables you get back are copies: changing them changes nothing.
 ```lua
 local em = require('earmark')
 local a = em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '3' })  -- nil if the span is empty
+-- on exactly the span of an annotation the label joins it; { separate = true } makes a new one
+em.annotate(buf, { 0, 4 }, { 0, 9 }, { set = 'vivid', label = '5' }, { separate = true })
 em.list(buf)                -- { { annotation = a, s = {r,c}, e = {r,c} }, ... } sorted; s/e nil when detached
 em.at(buf, pos)             -- same shape, at pos (default cursor), innermost first
 em.get(buf, a.id)           -- nil if it isn't there
