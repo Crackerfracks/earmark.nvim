@@ -77,15 +77,47 @@ local function numbered(name, palette)
   return labels
 end
 
+--- Report a problem with set `name` (under its file, when it has one).
+local function report(name, spec, msg)
+  M.errors[type(spec) == 'table' and spec._source or name] = ('set "%s": %s'):format(name, msg)
+end
+
+--- `c` as #rrggbb (#rgb is widened), or nil when it isn't a colour.
+local function hex(c)
+  if type(c) ~= 'string' then return nil end
+  if c:match('^#%x%x%x$') then c = c:gsub('%x', '%0%0') end
+  return c:match('^#%x%x%x%x%x%x$') and c or nil
+end
+
+--- A label's or choice's colour: nil when not given; an invalid one is reported and dropped.
+local function color_of(name, spec, c, what)
+  if c == nil then return nil end
+  local out = hex(c)
+  if not out then report(name, spec, ('%s: colour %s is not #rrggbb'):format(what, vim.inspect(c))) end
+  return out
+end
+
+--- `expires` as YYYY-MM-DD (2026-1-5 too), or nil; anything else is reported and ignored.
+local function expiry(name, spec)
+  local e = type(spec) == 'table' and spec.expires or nil
+  if e == nil or e == '' then return nil end
+  local y, m, d = (type(e) == 'string' and e or ''):match('^%s*(%d%d%d%d)%-(%d%d?)%-(%d%d?)')
+  m, d = tonumber(m or ''), tonumber(d or '')
+  if y and m >= 1 and m <= 12 and d >= 1 and d <= 31 then return ('%s-%02d-%02d'):format(y, m, d) end
+  report(name, spec, ('expires %s is not a date (YYYY-MM-DD); the set does not expire'):format(vim.inspect(e)))
+  return nil
+end
+
 --- Choices in list form ({ {key=, name=, color=} | 'name', ... }) or map form
 --- ({ a = 'Correct', b = { name = 'Minor', color = '#..' } }), as an ordered list.
-local function norm_choices(c)
+local function norm_choices(c, name, spec)
   if type(c) ~= 'table' then return nil end
   local out = {}
   if c[1] ~= nil then
     for i, x in ipairs(c) do
       if type(x) == 'string' then x = { name = x } end
-      out[#out + 1] = { key = tostring(x.key or string.char(96 + i)), name = x.name or tostring(x.key), color = x.color }
+      out[#out + 1] = { key = tostring(x.key or string.char(96 + i)), name = x.name or tostring(x.key),
+        color = color_of(name, spec, x.color, 'choice ' .. tostring(x.key or i)) }
     end
   else
     local keys = vim.tbl_keys(c)
@@ -93,7 +125,8 @@ local function norm_choices(c)
     for _, k in ipairs(keys) do
       local x = c[k]
       if type(x) == 'string' then x = { name = x } end
-      out[#out + 1] = { key = tostring(k), name = x.name or tostring(k), color = x.color }
+      out[#out + 1] = { key = tostring(k), name = x.name or tostring(k),
+        color = color_of(name, spec, x.color, 'choice ' .. tostring(k)) }
     end
   end
   return #out > 0 and out or nil
@@ -107,18 +140,20 @@ local function normalize(name, spec)
     labels = numbered(name, spec.palette or name)
   else
     labels = {}
+    local at = {} -- key -> index: a later label with the same key replaces the earlier one
     for i, l in ipairs(spec.labels or {}) do
       if type(l) == 'string' then l = { name = l } end
-      local choices = norm_choices(l.choices)
+      local choices = norm_choices(l.choices, name, spec)
       local text = l.text
       if type(text) == 'string' then text = { prompt = text } end
       if text == true then text = {} end
-      labels[i] = {
-        key = tostring(l.key or i),
-        name = l.name or tostring(l.key or i),
+      local key = tostring(l.key or i)
+      local label = {
+        key = key,
+        name = (l.name ~= nil and l.name ~= '') and tostring(l.name) or key,
         desc = l.desc,
         -- auto colours walk the vivid palette so neighbouring labels differ
-        color = l.color or color.numbered('vivid', ((i - 1) % 99) + 1),
+        color = color_of(name, spec, l.color, 'label ' .. key) or color.numbered('vivid', ((i - 1) % 99) + 1),
         color_name = l.color_name,
         choices = choices,
         text = type(text) == 'table' and text or nil,
@@ -126,10 +161,16 @@ local function normalize(name, spec)
         tags = type(l.tags) == 'table' and #l.tags > 0 and l.tags or nil,
       }
       if choices then
-        labels[i].choice_by_key = {}
+        label.choice_by_key = {}
         for _, c in ipairs(choices) do
-          labels[i].choice_by_key[c.key] = c
+          label.choice_by_key[c.key] = c
         end
+      end
+      if at[key] then
+        labels[at[key]] = label
+      else
+        labels[#labels + 1] = label
+        at[key] = #labels
       end
     end
   end
@@ -142,7 +183,7 @@ local function normalize(name, spec)
     source = type(spec) == 'table' and spec._source or nil,
     tags = type(spec) == 'table' and type(spec.tags) == 'table' and #spec.tags > 0 and spec.tags or nil,
     files = type(spec) == 'table' and spec._files or nil,
-    expires = type(spec) == 'table' and type(spec.expires) == 'string' and spec.expires or nil,
+    expires = expiry(name, spec),
     auto = not (type(spec) == 'table' and spec.auto == false),
   }
   for _, l in ipairs(labels) do
@@ -183,6 +224,7 @@ local function read_file(path, trusted)
     data = vim.secure.read(path)
     if not data then return nil, 'not trusted (run :trust on it)' end
   end
+  data = data:gsub('^\239\187\191', '') -- a byte order mark (Windows editors)
   if path:match('%.json$') then
     local ok, t = pcall(vim.json.decode, data, { luanil = { object = true, array = true } })
     if not ok then return nil, t end
@@ -249,7 +291,7 @@ M.general = nil
 local function extended(spec)
   local base = M.by_name[spec.extends]
   if not base then
-    M.errors[spec._source or spec.extends] = ('extends unknown set "%s"'):format(spec.extends)
+    M.errors[spec._source or tostring(spec.extends)] = ('extends unknown set "%s"'):format(tostring(spec.extends))
     return spec
   end
   local out = vim.tbl_extend('force', {}, spec)
@@ -285,11 +327,18 @@ local function scope_globs(files, dir)
       if g:sub(1, 1) == '/' then
         out[#out + 1] = { '/', g:sub(2) }
       else
-        out[#out + 1] = { vim.fs.normalize(dir), g }
+        -- ./x is x; ../x is x in the folder above
+        local d = vim.fs.normalize(dir)
+        while g:sub(1, 2) == './' or g:sub(1, 3) == '../' do
+          if g:sub(1, 3) == '../' then d = vim.fs.dirname(d) end
+          g = g:gsub('^%.%.?/', '')
+        end
+        out[#out + 1] = { d, g }
       end
     end
   end
-  return #out > 0 and out or nil
+  -- an empty list is a set for no file (never a general one)
+  return out
 end
 
 --- Build the sets: your setup() sets, then your set files, then the project's set files
@@ -298,48 +347,70 @@ end
 function M.load(opts, root)
   if root ~= nil then M.root = root or nil end
   local previous = M.current
-  M.order, M.by_name, M.files, M.errors = {}, {}, {}, {}
+  M.order, M.by_name, M.files, M.errors, M.variants = {}, {}, {}, {}, {}
   local builtin = require('earmark.builtin_sets')
   local function add(name, spec, scope_dir)
     if type(spec) == 'string' and builtin[spec] then spec = builtin[spec] end
-    if type(spec) == 'table' then
-      if spec.extends then spec = extended(spec) end
-      spec._files = scope_globs(spec.files, scope_dir)
-      if spec._files and M.by_name[name] and not M.by_name[name].files then
-        -- a set for some files never replaces a general one of the same name
-        name = name .. ' (' .. (spec._stem or 'file') .. ')'
+    -- a broken set (labels = 5, an unknown palette ...) is reported; the others still load
+    local ok, set = pcall(function()
+      if type(spec) == 'table' then
+        if spec.extends then spec = extended(spec) end
+        spec._files = scope_globs(spec.files, scope_dir)
+        if spec._files and M.by_name[name] and not M.by_name[name].files then
+          -- a set for some files never replaces a general one of the same name
+          name = name .. ' (' .. (spec._stem or 'file') .. ')'
+        end
       end
+      return normalize(name, spec)
+    end)
+    if not ok then return report(name, spec, set) end
+    local old = M.by_name[name]
+    if set.files and old and old.files then
+      -- the same name for other files (review.md in two review folders): keep both, and
+      -- M.pick_variants puts the one for the file in use under the name
+      M.variants[name] = M.variants[name] or { old }
+      table.insert(M.variants[name], set)
     end
-    if not M.by_name[name] then M.order[#M.order + 1] = name end
-    M.by_name[name] = normalize(name, spec)
+    if not old then M.order[#M.order + 1] = name end
+    M.by_name[name] = set
+  end
+  --- The sets of one place, a set its neighbours extend before them (in any file order);
+  --- what still waits after that (an unknown name, a cycle) is added as it is.
+  local function add_all(list, scope_dir)
+    while #list > 0 do
+      local waiting = {}
+      for _, x in ipairs(list) do
+        local ext = type(x[2]) == 'table' and x[2].extends
+        if ext and not M.by_name[ext] then waiting[#waiting + 1] = x else add(x[1], x[2], scope_dir) end
+      end
+      if #waiting == #list then
+        for _, x in ipairs(waiting) do
+          add(x[1], x[2], scope_dir)
+        end
+        return
+      end
+      list = waiting
+    end
   end
   for _, v in ipairs(opts.sets) do
     add(v, v)
   end
   local named = {}
   for k in pairs(opts.sets) do
-    if type(k) == 'string' then named[#named + 1] = k end
+    if type(k) == 'string' then named[#named + 1] = { k, opts.sets[k] } end
   end
-  table.sort(named)
-  for _, k in ipairs(named) do
-    add(k, opts.sets[k])
-  end
+  table.sort(named, function(a, b) return a[1] < b[1] end)
+  add_all(named)
   if opts.sets_dir ~= false then
-    for _, x in ipairs(dir_sets(opts.sets_dir or M.user_dir(), true)) do
-      add(x[1], x[2], vim.env.HOME)
-    end
+    add_all(dir_sets(opts.sets_dir or M.user_dir(), true), vim.env.HOME)
   end
   if M.root then
-    for _, x in ipairs(dir_sets(M.root .. '/.earmark/sets', false)) do
-      add(x[1], x[2], M.root)
-    end
+    add_all(dir_sets(M.root .. '/.earmark/sets', false), M.root)
   end
   local dirs = vim.tbl_keys(M.sidecar_dirs)
   table.sort(dirs)
   for _, d in ipairs(dirs) do
-    for _, x in ipairs(dir_sets(d, true, true)) do
-      add(x[1], x[2], d)
-    end
+    add_all(dir_sets(d, true, true), d)
   end
   for path, err in pairs(M.errors) do
     require('earmark.log').warn('label set file %s: %s', path, err)
@@ -415,6 +486,11 @@ function M.visible(name, path)
   local set = M.by_name[name]
   if not set then return false end
   if set.expires and set.expires < today() then return false end
+  return M.for_file(set, path)
+end
+
+--- Whether `set` applies to the file at `path`: a general set always does.
+function M.for_file(set, path)
   if not set.files then return true end
   if not path or path == '' then return false end
   for _, g in ipairs(set.files) do
@@ -425,7 +501,25 @@ function M.visible(name, path)
   return false
 end
 
-local function path_of(buf)
+--- Sets of one name for different files: put the one for the file at `path` under the
+--- name. Returns true if one was swapped in (what's drawn with it needs drawing again).
+function M.pick_variants(path)
+  if not path then return false end
+  local swapped = false
+  for name, list in pairs(M.variants or {}) do
+    if not M.for_file(M.by_name[name], path) then
+      for _, set in ipairs(list) do
+        if M.for_file(set, path) then
+          M.by_name[name], swapped = set, true
+          break
+        end
+      end
+    end
+  end
+  return swapped
+end
+
+function M.path_of(buf)
   buf = (buf == nil or buf == 0) and vim.api.nvim_get_current_buf() or buf
   if not vim.api.nvim_buf_is_valid(buf) or vim.bo[buf].buftype ~= '' then return nil end
   local name = vim.api.nvim_buf_get_name(buf)
@@ -435,7 +529,8 @@ end
 --- The sets offered in buffer `buf` (default: current), in order: those for this file
 --- first, then the general ones. Sets for other files and expired ones are left out.
 function M.list(buf)
-  local path = path_of(buf)
+  local path = M.path_of(buf)
+  M.pick_variants(path)
   local own, general = {}, {}
   for _, n in ipairs(M.order) do
     if M.visible(n, path) then
@@ -447,11 +542,13 @@ end
 
 --- On entering `buf`: a set made for this file becomes the current one (unless it says
 --- `auto = false`); leaving for a file without one brings back the set used before.
---- Returns true if the current set changed.
+--- Returns true if the current set changed, and true as a second value if a set of the
+--- same name for this file was swapped in (M.pick_variants).
 function M.focus(buf)
-  local path = path_of(buf)
+  local path = M.path_of(buf)
+  local swapped = M.pick_variants(path)
   -- only on arriving in another file: a set you picked by hand here stays
-  if not path or path == M.focused then return false end
+  if not path or path == M.focused then return false, swapped end
   M.focused = path
   local cur = M.by_name[M.current]
   local here
@@ -462,20 +559,20 @@ function M.focus(buf)
       break
     end
   end
-  if cur and cur.files and M.visible(M.current, path) then return false end -- already on one for here
+  if cur and cur.files and M.visible(M.current, path) then return false, swapped end -- already on one for here
   if here then
     if not (cur and cur.files) then M.general = M.current end
     M.current = here
-    return true
+    return true, swapped
   end
   if cur and (cur.files or not M.visible(M.current, path)) then
     local back = M.general and M.visible(M.general, path) and M.general or M.list(buf)[1]
     if back and back ~= M.current then
       M.current = back
-      return true
+      return true, swapped
     end
   end
-  return false
+  return false, swapped
 end
 
 function M.apply_highlights()

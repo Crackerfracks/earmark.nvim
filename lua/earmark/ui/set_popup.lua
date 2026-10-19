@@ -49,6 +49,7 @@ function M.show(set_name, ms)
     col = col + #c[1]
   end
   local buf = api.nvim_create_buf(false, true)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[buf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(buf, 0, -1, false, { text })
   for _, m in ipairs(marks) do

@@ -26,6 +26,7 @@ local op -- { win, cursor, visual, suffix, keys = {} } of the operator waiting f
 local replay -- spans the replayed operator must cover
 local last_value -- most recently used value; preselected in the prompt
 local asked = {} -- [buf]["set/key"] = true once the prompt asked to name that label
+local block_eol = false -- the last Visual block operator went to the ends of lines (`$`)
 
 local function value_for_count(count)
   local l = sets.resolve(count)
@@ -83,7 +84,8 @@ local function region(motion)
     local out = {}
     for _, p in ipairs(segs) do
       local row = p[1][2] - 1
-      out[#out + 1] = { s = { row, p[1][3] - 1 }, e = { row, excl_end(row, p[2][3]) } }
+      local e = block_eol and #(lines[row + 1] or '') or excl_end(row, p[2][3])
+      out[#out + 1] = { s = { row, p[1][3] - 1 }, e = { row, e } }
     end
     return out
   end
@@ -201,7 +203,9 @@ end
 --- annotating `spans` directly if the replay can't reproduce them.
 local function replay_operator(o, spans, value)
   pending, want_prompt, replay = value, false, spans
-  local ok = pcall(function()
+  -- (only in the window it started in, still showing that buffer)
+  local usable = api.nvim_win_is_valid(o.win) and api.nvim_win_get_buf(o.win) == o.buf
+  local ok = usable and pcall(function()
     api.nvim_set_current_win(o.win)
     api.nvim_win_set_cursor(o.win, o.cursor)
     vim.o.operatorfunc = "v:lua.require'earmark'.operatorfunc"
@@ -210,8 +214,8 @@ local function replay_operator(o, spans, value)
   end)
   if replay then -- the replay didn't reach operatorfunc
     replay = nil
-    if not ok then log.warn('replaying the operator failed') end
-    annotate(api.nvim_get_current_buf(), spans, value, true)
+    if usable and not ok then log.warn('replaying the operator failed') end
+    if api.nvim_buf_is_valid(o.buf) then annotate(o.buf, spans, value, true) end
   end
 end
 
@@ -258,9 +262,17 @@ local opfunc = "v:lua.require'earmark'.operatorfunc"
 --- dropped before g@, so it doesn't multiply the motion.
 function M.operator_expr(suffix)
   local mode = api.nvim_get_mode().mode
+  -- the '[ and '] marks don't say a block was extended with `$`: each line to its end
+  block_eol = mode == '\22' and vim.fn.winsaveview().curswant == vim.v.maxcol
   if vim.v.count > 0 then
     local value = value_for_count(vim.v.count)
-    if not value then return '<Ignore>' end
+    if not value then
+      if mode:match('^[vV\22]') then return '<Ignore>' end
+      -- still wait for the motion, so it isn't run as commands (`iw` would insert "w")
+      pending, want_prompt, fresh = nil, false, false
+      vim.o.operatorfunc = opfunc
+      return '<Esc>g@' .. (suffix or '')
+    end
     pending, want_prompt, fresh = value, false, true
     if not mode:match('^[vV\22]') and config.options.prompt.count_hint then
       -- the keys returned below haven't run yet: wait for the operator to start waiting
@@ -277,6 +289,7 @@ function M.operator_expr(suffix)
     want_prompt, fresh = true, false
     op = {
       win = api.nvim_get_current_win(),
+      buf = api.nvim_get_current_buf(),
       cursor = api.nvim_win_get_cursor(0),
       visual = mode:match('^[vV\22]') ~= nil,
       suffix = suffix,
@@ -291,7 +304,9 @@ function M.operator_expr(suffix)
         return
       end
       if not api.nvim_get_mode().mode:match('^no') then
-        -- the operator was cancelled before a motion completed
+        -- the operator was cancelled before a motion completed (now, not once scheduled:
+        -- this key may be a `.` that repeats the last annotation without asking)
+        if op == o then want_prompt = false end
         vim.schedule(function()
           if op == o then
             op, want_prompt = nil, false
@@ -481,8 +496,10 @@ local function sync_sets(buf)
     end
     loaded = true
   end
-  if buf == api.nvim_get_current_buf() and sets.focus(buf) then
-    pcall(vim.cmd, 'redrawstatus!')
+  if buf == api.nvim_get_current_buf() then
+    local changed, swapped = sets.focus(buf)
+    if swapped and not loaded then buffer.rerender(buf) end
+    if changed or swapped then pcall(vim.cmd, 'redrawstatus!') end
   end
   return loaded
 end
@@ -710,6 +727,7 @@ local regrow_target
 --- the motion or selection (its note, labels and tags stay).
 function M.regrow_expr()
   local mode = api.nvim_get_mode().mode
+  block_eol = mode == '\22' and vim.fn.winsaveview().curswant == vim.v.maxcol
   local hits
   if mode:match('^[vV\22]') then
     local a, b = vim.fn.getpos('v'), vim.fn.getpos('.')
@@ -816,46 +834,97 @@ end
 -- Public API (stable surface for other plugins)
 ---------------------------------------------------------------------------
 
+-- Arguments here come from other plugins: a bad one gets nil/false/0 back instead of an
+-- error or a broken record, and results are copies, so changing them changes nothing.
+
+local function buf_of(buf)
+  buf = buf or 0
+  if buf == 0 then return api.nvim_get_current_buf() end
+  return type(buf) == 'number' and api.nvim_buf_is_valid(buf) and buf or nil
+end
+
+--- A copy of value `v` to store (a numeric label becomes a string), or nil if it isn't one.
+local function value_of(v)
+  if type(v) ~= 'table' or type(v.set) ~= 'string' or not (type(v.label) == 'string' or type(v.label) == 'number') then
+    return nil
+  end
+  v = vim.deepcopy(v)
+  v.label = tostring(v.label)
+  return v
+end
+
+--- `pos` as a position in `buf`: the column clamped to its line and moved off the middle of
+--- a character (back for a start, forward for an end). An end may be the line after the
+--- last (the end of the buffer). Nil if the row isn't in the buffer.
+local function pos_of(buf, pos, is_end)
+  if type(pos) ~= 'table' or type(pos[1]) ~= 'number' or type(pos[2]) ~= 'number' then return nil end
+  local row, col = math.floor(pos[1]), math.max(0, math.floor(pos[2]))
+  local n = api.nvim_buf_line_count(buf)
+  if not (row >= 0 and row <= n) or (row == n and not is_end) then return nil end -- (and NaN)
+  if row == n then row, col = n - 1, math.huge end
+  local line = api.nvim_buf_get_lines(buf, row, row + 1, false)[1]
+  col = math.min(col, #line)
+  if col > 0 and col < #line then
+    col = col + (is_end and vim.str_utf_end(line, col) or vim.str_utf_start(line, col + 1))
+  end
+  return { row, col }
+end
+
 --- Annotate a range in a buffer. `s`/`e` are 0-based {row, col}, end-exclusive.
---- `value` is { set = <set name>, label = <label key> }.
+--- `value` is { set = <set name>, label = <label key> }. Nil when the span is empty.
 function M.annotate(buf, s, e, value)
-  return buffer.add(buf or 0, s, e, value)
+  buf, value = buf_of(buf), value_of(value)
+  if not (buf and value and api.nvim_buf_is_loaded(buf)) then return nil end
+  s, e = pos_of(buf, s, false), pos_of(buf, e, true)
+  if not (s and e) or e[1] < s[1] or (e[1] == s[1] and e[2] <= s[2]) then return nil end
+  local a, how = buffer.add(buf, s, e, value)
+  return vim.deepcopy(a), how
 end
 
 --- Annotations in a buffer: list of { annotation, s, e } (s/e nil when detached).
 function M.list(buf)
-  return buffer.list(buf or 0)
+  return vim.deepcopy(buffer.list(buf or 0))
 end
 
 --- Annotations at a position (default: cursor), innermost first: { annotation, s, e }.
 function M.at(buf, pos)
   return vim.tbl_map(function(h)
-    return { annotation = h.a, a = h.a, s = h.s, e = h.e }
+    local a = vim.deepcopy(h.a)
+    return { annotation = a, a = a, s = h.s, e = h.e }
   end, buffer.find(buf or 0, pos or cursor_pos()))
 end
 
 --- An annotation by id in a buffer (nil if it isn't there).
 function M.get(buf, id)
-  return buffer.annotation(buf or 0, id)
+  return vim.deepcopy(buffer.annotation(buf or 0, id))
 end
 
 --- Set (or clear with nil/'') the note of an annotation.
 function M.set_note(buf, id, text)
+  if text ~= nil and type(text) ~= 'string' then return false end
   return buffer.set_note(buf or 0, id, text)
 end
 
 --- Replace the explicit tags of an annotation (tags written in its note stay).
 function M.set_tags(buf, id, list)
+  if list ~= nil and type(list) ~= 'table' then return false end
   return buffer.set_tags(buf or 0, id, list)
 end
 
 --- Replace the labels of an annotation: { { set =, label =, choice =?, text =? }, ... }.
 function M.set_values(buf, id, values)
-  return buffer.set_values(buf or 0, id, values)
+  if type(values) ~= 'table' then return false end
+  local list = {}
+  for i, v in ipairs(values) do
+    list[i] = value_of(v)
+    if not list[i] then return false end
+  end
+  return buffer.set_values(buf or 0, id, list)
 end
 
 --- Move annotations to the trash (restorable). Returns how many.
 function M.erase(buf, ids)
+  if type(ids) ~= 'table' then return 0 end
   return buffer.erase(buf or 0, ids)
 end
 
@@ -882,17 +951,37 @@ end
 
 --- Name a label for one document (nil clears it).
 function M.rename_label(buf, value, name)
+  value = value_of(value)
+  if not value or (name ~= nil and type(name) ~= 'string') then return false end
   return buffer.rename_label(buf or 0, value, name)
 end
 
 --- Names given to labels in a document: { ["set/key"] = name }.
 function M.names(buf)
-  return buffer.names(buf or 0)
+  return vim.deepcopy(buffer.names(buf or 0))
+end
+
+--- The name a value goes by in a buffer: the document's name for its label, else the
+--- label's name (a numbered label's is its key), then its choice ("Accuracy · b Minor").
+function M.display_name(buf, value)
+  value = value_of(value)
+  sets.pick_variants(sets.path_of(buf))
+  return value and buffer.display_name(buf or 0, value) or nil
+end
+
+--- A copy of the label of a value: { set, key, name, color, desc, tags }, or nil.
+function M.label(value)
+  value = value_of(value)
+  local l = value and sets.label(value)
+  if not l then return nil end
+  return vim.deepcopy({ set = value.set, key = l.key, name = l.name, color = l.color, desc = l.desc, tags = l.tags })
 end
 
 --- Markdown export lines (see README, Export).
 function M.export(buf, opts)
-  return require('earmark.export').markdown(buf or 0, opts)
+  buf = buf_of(buf)
+  if not buf then return {} end
+  return require('earmark.export').markdown(buf, opts)
 end
 
 --- Open the annotation picker: opts.scope = 'file' (default) | 'project', opts.query.
@@ -1077,6 +1166,9 @@ local function setup_autocmds()
     buffer.insert_left(ev.buf)
   end)
   au({ 'BufUnload' }, function(ev)
+    -- its note being edited goes with it (`:qa!` unloads buffers before VimLeavePre)
+    local note = package.loaded['earmark.ui.note']
+    if note and note.active and note.active.src_buf == ev.buf then note.save(note.active, true) end
     if buffer.state[ev.buf] then
       buffer.save(ev.buf)
       buffer.forget(ev.buf)
@@ -1087,6 +1179,9 @@ local function setup_autocmds()
     end
   end)
   au('VimLeavePre', function()
+    -- a note being edited is saved too, wherever the cursor is
+    local note = package.loaded['earmark.ui.note']
+    if note and note.active then note.save(note.active, true) end
     for buf in pairs(buffer.state) do
       buffer.save(buf)
     end
@@ -1156,12 +1251,15 @@ function M.setup(opts)
       pcall(wk.add, vim.list_extend(spec, require('earmark.ui.keys').which_key_spec()))
     end)
   end
-  -- Buffers loaded before setup (e.g. the file Neovim was started with).
+  -- Buffers loaded before setup (e.g. the file Neovim was started with), with the sets of
+  -- their project and folder; the current buffer's project last, so its sets are loaded.
   for _, buf in ipairs(api.nvim_list_bufs()) do
     if api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == '' and api.nvim_buf_get_name(buf) ~= '' then
+      sync_sets(buf)
       buffer.get(buf)
     end
   end
+  sync_sets(api.nvim_get_current_buf())
 end
 
 return M

@@ -51,6 +51,7 @@ function M.doc(buf)
   if not vim.api.nvim_buf_is_valid(buf) then return nil end
   local bt = vim.bo[buf].buftype
   if vim.tbl_contains(config.options.ignore_buftypes, bt) then return nil end
+  if vim.b[buf].earmark_ui then return nil end -- our own floats: prompt, hover, note ...
   local name = vim.api.nvim_buf_get_name(buf)
   if bt == '' and name ~= '' and not name:match('^%w[%w+.-]*://') then
     local path = vim.fs.normalize(vim.fn.fnamemodify(name, ':p'))
@@ -103,6 +104,36 @@ function M.base_for(doc)
   return doc and doc.base or config.options.storage_dir
 end
 
+local function is_pos(p)
+  return p == nil or (type(p) == 'table' and type(p[1]) == 'number' and type(p[2]) == 'number')
+end
+
+local function is_annotation(a)
+  if type(a) ~= 'table' or type(a.id) ~= 'string' then return false end
+  if type(a.values) ~= 'table' or type(a.values[1]) ~= 'table' then return false end
+  for _, k in ipairs({ 'quote', 'prefix', 'suffix', 'original_quote', 'note' }) do
+    if a[k] ~= nil and type(a[k]) ~= 'string' then return false end
+  end
+  return is_pos(a.s) and is_pos(a.e)
+end
+
+--- Whether a decoded record has the shape earmark writes (so loading it can't fail).
+local function well_formed(rec)
+  if type(rec) ~= 'table' or rec[1] ~= nil then return false end
+  for _, k in ipairs({ 'annotations', 'trash', 'names', 'colors', 'doc' }) do
+    if rec[k] ~= nil and type(rec[k]) ~= 'table' then return false end
+  end
+  for _, k in ipairs({ 'names', 'colors' }) do
+    if rec[k] and rec[k][1] ~= nil then return false end
+  end
+  for _, k in ipairs({ 'annotations', 'trash' }) do
+    for _, a in ipairs(rec[k] or {}) do
+      if not is_annotation(a) then return false end
+    end
+  end
+  return true
+end
+
 --- Read a record. Returns record, or nil plus an error message. A record that exists but
 --- can't be parsed is reported as an error so callers never overwrite it.
 function M.read(path)
@@ -110,16 +141,20 @@ function M.read(path)
   if not f then return nil end
   local data = f:read('*a')
   f:close()
+  if not data or not data:match('%S') then return nil end -- empty: nothing in it to keep
   local ok, rec = pcall(vim.json.decode, data, { luanil = { object = true, array = true } })
   if not ok or type(rec) ~= 'table' then return nil, 'could not parse ' .. path end
+  if not well_formed(rec) then return nil, path .. ' is not an earmark record' end
   if (rec.version or 0) > M.VERSION then return nil, path .. ' was written by a newer earmark' end
   return rec
 end
 
 --- Write `data` (a string) to `path` atomically (temp file + rename).
 local function write_atomic(path, data)
-  vim.fn.mkdir(vim.fs.dirname(path), 'p')
-  local tmp = path .. '.tmp' .. tostring(uv.hrtime())
+  local mok, merr = pcall(vim.fn.mkdir, vim.fs.dirname(path), 'p')
+  if not mok then return false, merr end
+  -- a short name: a long file name plus a suffix could pass the 255-byte limit
+  local tmp = ('%s/.%d.%d.tmp'):format(vim.fs.dirname(path), uv.os_getpid(), uv.hrtime())
   local f, err = io.open(tmp, 'w')
   if not f then return false, err end
   f:write(data)
@@ -247,7 +282,7 @@ end
 -- Rename detection: records whose file no longer exists, indexed by fingerprint.
 ---------------------------------------------------------------------------
 
-local orphan_index = {} -- store dir -> { [fingerprint] = record path }
+local orphan_index = {} -- store dir -> { [fingerprint] = { { record path, source path } ... } }
 
 function M.orphans_dirty()
   orphan_index = {}
@@ -257,6 +292,24 @@ local function source_path(doc_dir, rec)
   if not (rec.doc and rec.doc.key) then return nil end
   if doc_dir:match('/%.earmark/docs$') then return doc_dir:gsub('/%.earmark/docs$', '') .. '/' .. rec.doc.key end
   return '/' .. rec.doc.key
+end
+
+--- Record for the same file where an earlier root put it: under the `.earmark` of an
+--- enclosing directory (a nearer root marker appeared) or under `storage_dir` (it was outside
+--- any project, or its root marker went away).
+function M.find_rerooted(doc)
+  local function found(record)
+    return record ~= doc.record and uv.fs_stat(record) and record or nil
+  end
+  for dir in vim.fs.parents(doc.path) do
+    if dir ~= doc.root and uv.fs_stat(dir .. '/.earmark/docs') then
+      local rec = found(dir .. '/.earmark/docs/' .. vim.fs.relpath(dir, doc.path) .. '.json')
+      if rec then return rec end
+    end
+  end
+  if doc.root then
+    return found(config.options.storage_dir .. '/files/' .. doc.path:gsub('^/', '') .. '.json')
+  end
 end
 
 --- Find a record for a file that was renamed/moved: one in `doc.dir` whose source file is
@@ -271,13 +324,19 @@ function M.find_renamed(doc, lines)
           local path = doc.dir .. '/' .. name
           local rec = M.read(path)
           local src = rec and source_path(doc.dir, rec)
-          if src and not uv.fs_stat(src) and rec.fingerprint then idx[rec.fingerprint] = path end
+          if src and rec.fingerprint then
+            idx[rec.fingerprint] = idx[rec.fingerprint] or {}
+            table.insert(idx[rec.fingerprint], { path, src })
+          end
         end
       end
     end
     orphan_index[doc.dir] = idx
   end
-  return idx[M.fingerprint(lines)]
+  -- whether the source is gone is checked now: files move outside Neovim without telling us
+  for _, it in ipairs(idx[M.fingerprint(lines)] or {}) do
+    if not uv.fs_stat(it[2]) and uv.fs_stat(it[1]) then return it[1] end
+  end
 end
 
 return M

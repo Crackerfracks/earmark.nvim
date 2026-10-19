@@ -54,6 +54,13 @@ function M.for_span(win, s, e, w, h, opts)
   if ecol == 0 and erow > s[1] then erow = erow - 1 end
   local last = screen(win, erow, math.max(0, ecol - 1))
   local first = screen(win, s[1], s[2])
+  if not first and not last then
+    -- the span runs off both ends of the window: keep clear of the cursor's line instead
+    local c = api.nvim_win_get_cursor(win)
+    erow = c[1] - 1
+    first = screen(win, erow, c[2])
+    last = first
+  end
   -- rows (0-based, window-relative) available below the span's last screen line and above
   -- its first; wrapped lines may take more screen rows than one
   local below_row
@@ -90,6 +97,14 @@ function M.for_span(win, s, e, w, h, opts)
     height = height - pad,
     side = side,
   }
+end
+
+--- In the command-line window (`q:`), where no other window can be entered (E11): says so
+--- and returns true.
+function M.in_cmdwin()
+  if vim.fn.getcmdwintype() == '' then return false end
+  vim.notify('earmark: not available in the command-line window')
+  return true
 end
 
 --- Usable border for window titles: a float without a border can't show a title.

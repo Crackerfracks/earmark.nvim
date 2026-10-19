@@ -191,6 +191,7 @@ function M.show(src_win, hits, focus)
   end
   M.hide()
   local buf = api.nvim_create_buf(false, true)
+  vim.b[buf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[buf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   for _, m in ipairs(marks) do
@@ -270,6 +271,7 @@ end
 --- `<leader>mi`: show the hover for everything under the cursor now and enter it; pressed
 --- again (while it's shown), focus it.
 function M.peek(count)
+  if place.in_cmdwin() then return end
   local win = api.nvim_get_current_win()
   local buf = api.nvim_get_current_buf()
   local hits = buffer.find(buf, cursor_pos(win))

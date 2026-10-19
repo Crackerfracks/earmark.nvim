@@ -350,19 +350,31 @@ local function draw_indicators(win, buf, S, top, bot)
     local r = last_row(it)
     if r >= top and r <= bot then by_row[r] = true end
   end
-  local info = vim.fn.getwininfo(win)[1]
-  local avail = api.nvim_win_get_width(win) - (info and info.textoff or 0)
-  local wrap = vim.wo[win].wrap
+  -- every window of this tab showing the buffer decides alike (the virtual lines are the
+  -- buffer's): else each one would remove the lines another one places, again and again
+  local rooms, avail = {}, math.huge
+  for _, w in ipairs(vim.fn.win_findbuf(buf)) do
+    if api.nvim_win_get_tabpage(w) == api.nvim_win_get_tabpage(win) then
+      local info = vim.fn.getwininfo(w)[1]
+      local room = { avail = api.nvim_win_get_width(w) - (info and info.textoff or 0), wrap = vim.wo[w].wrap }
+      rooms[#rooms + 1] = room
+      avail = math.min(avail, room.avail)
+    end
+  end
   local want, dirty = {}, false
   for row in pairs(by_row) do
     local ind = eol_from(S, items, row)
     if ind then
       local line = api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ''
       local lw = vim.fn.strdisplaywidth(line)
-      local used = wrap and avail > 0 and (lw % avail) or lw
-      if wrap and lw > 0 and used == 0 then used = avail end
       local w = chunks_width(ind.chunks)
-      if used + 1 + w <= avail then
+      local fits = true
+      for _, r in ipairs(rooms) do
+        local used = r.wrap and r.avail > 0 and (lw % r.avail) or lw
+        if r.wrap and lw > 0 and used == 0 then used = r.avail end
+        if used + 1 + w > r.avail then fits = false end
+      end
+      if fits then
         api.nvim_buf_set_extmark(buf, M.ns, row, 0, {
           virt_text = ind.chunks, virt_text_pos = 'eol', ephemeral = true, priority = 100,
         })

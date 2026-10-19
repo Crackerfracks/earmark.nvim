@@ -58,11 +58,12 @@ end
 function M.diff(buf, id)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   local a = buffer.annotation(buf, id)
-  if not a then return end
+  if not a or place.in_cmdwin() then return end
   local was, now = flat(a.original_quote), flat(a.quote)
   local lines = { 'originally', was, a.status == 'detached' and 'now (last seen)' or 'now', now }
   local d = M.char_diff(was, now)
   local fbuf = api.nvim_create_buf(false, true)
+  vim.b[fbuf].earmark_ui = true -- never annotated (store.doc)
   vim.bo[fbuf].bufhidden = 'wipe'
   api.nvim_buf_set_lines(fbuf, 0, -1, false, lines)
   api.nvim_buf_set_extmark(fbuf, M.ns, 0, 0, { end_col = #lines[1], hl_group = 'Comment' })
