@@ -470,7 +470,7 @@ function M.get(buf, opts)
   -- not before its text is read: an empty state would stay empty and save over the record
   if not api.nvim_buf_is_loaded(buf) then return nil end
   local doc = store.doc(buf)
-  if not doc or not api.nvim_buf_is_loaded(buf) then return nil end
+  if not doc then return nil end
   S = { doc = doc, annos = {}, ext = {}, by_ext = {}, swatch = {}, names = {}, colors = {}, snap = { lines = {}, pos = {} }, trash = {} }
   M.state[buf] = S
   load(buf, S)
