@@ -37,7 +37,7 @@ T['appears on a named annotation, not on a plain one'] = function()
   local hv = hover()
   eq(hv.lines[1]:find('Factually Inaccurate', 1, true) ~= nil, true)
   eq(hv.lines[1]:find('vivid·3', 1, true) ~= nil, true)
-  eq(hv.focusable, false)
+  eq(hv.focusable, true) -- so flash and the mouse can reach it
   eq(child.api.nvim_win_get_config(0).relative, '') -- focus stays in the text
 end
 

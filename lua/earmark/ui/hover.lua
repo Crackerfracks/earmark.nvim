@@ -50,16 +50,18 @@ end
 local CIRCLED = { '①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨' }
 
 --- Lines and highlights for hits (innermost first).
---- Returns lines, marks = { {row, col_start, col_end, group} ... }.
+--- Returns lines, marks = { {row, col_start, col_end, group} ... }, and rows: for each 0-based
+--- row, { id = annotation id, line = note line (1-based) or nil }.
 function M.content(buf, hits)
   local S = buffer.state[buf]
-  local lines, marks = {}, {}
+  local lines, marks, rows = {}, {}, {}
   local function hl(row, s, e, group)
     marks[#marks + 1] = { row, s, e, group }
   end
   for i, h in ipairs(hits) do
     local a = h.a
     if i > 1 then lines[#lines + 1] = '' end
+    local first = #lines
     local parts = {} -- { text, group }
     if #hits > 1 then parts[#parts + 1] = { (CIRCLED[i] or (i .. '.')) .. ' ' } end
     -- one label per line: the first heads the entry, the others follow it as "+ name"
@@ -119,12 +121,16 @@ function M.content(buf, hits)
       hl(#lines - 1, 0, #lines[#lines], 'Comment')
     end
     if a.note then
-      for _, l in ipairs(vim.split(a.note, '\n')) do
+      for k, l in ipairs(vim.split(a.note, '\n')) do
         lines[#lines + 1] = l
+        rows[#lines - 1] = { id = a.id, line = k }
       end
     end
+    for r = first, #lines - 1 do
+      rows[r] = rows[r] or { id = a.id }
+    end
   end
-  return lines, marks
+  return lines, marks, rows
 end
 
 --- Close the hover.
@@ -166,23 +172,38 @@ local function config_for(src_win, hits, lines, focus)
   local cfg = place.for_span(src_win, s, e, w, h, { bordered = true, min_h = math.min(h, 3) })
   cfg.side = nil
   cfg.zindex = 45
-  cfg.focusable = focus or false
+  -- focusable, so flash.nvim, the mouse and <C-w>w can reach it (M.entered)
+  cfg.focusable = true
   cfg.style = 'minimal'
   cfg.border = config.options.ui.border
   cfg.noautocmd = true
   return cfg
 end
 
+--- Make the shown hover a focused one: it closes when the cursor leaves it.
+local function focus_on(H)
+  H.focused = true
+  local group = api.nvim_create_augroup('earmark_hover_float', { clear = true })
+  api.nvim_create_autocmd('WinLeave', {
+    group = group,
+    buffer = H.buf,
+    callback = function()
+      vim.schedule(M.hide)
+    end,
+  })
+end
+
 --- Show the hover for `hits` in `src_win` (replacing any shown one).
 function M.show(src_win, hits, focus)
   local src_buf = api.nvim_win_get_buf(src_win)
-  local lines, marks = M.content(src_buf, hits)
+  local lines, marks, rows = M.content(src_buf, hits)
   local key = key_of(hits)
   local row = api.nvim_win_get_cursor(src_win)[1]
   local H = M.shown
   if H and not focus and H.key == key and H.src_win == src_win and api.nvim_win_is_valid(H.win) then
     if H.row ~= row then
       H.row = row
+      H.rows = rows
       local cfg = config_for(src_win, hits, lines, false)
       cfg.noautocmd, cfg.style = nil, nil
       pcall(api.nvim_win_set_config, H.win, cfg)
@@ -207,22 +228,56 @@ function M.show(src_win, hits, focus)
     pcall(vim.treesitter.start, buf, 'markdown')
     vim.wo[win].conceallevel = 2
   end
-  M.shown = { win = win, buf = buf, src_win = src_win, src_buf = src_buf, key = key, row = row, focused = focus }
+  M.shown = { win = win, buf = buf, src_win = src_win, src_buf = src_buf, key = key, row = row, rows = rows }
+  for _, lhs in ipairs({ 'q', '<Esc>' }) do
+    vim.keymap.set('n', lhs, M.hide, { buffer = buf, nowait = true, desc = 'earmark: close' })
+  end
+  vim.keymap.set('n', '<CR>', M.edit, { buffer = buf, nowait = true, desc = 'earmark: edit this note here' })
+  api.nvim_create_autocmd('WinEnter', {
+    buffer = buf,
+    callback = function()
+      vim.schedule(function()
+        require('earmark.log').guard('hover', M.entered)
+      end)
+    end,
+  })
   if focus then
+    focus_on(M.shown)
     api.nvim_set_current_win(win)
-    for _, lhs in ipairs({ 'q', '<Esc>' }) do
-      vim.keymap.set('n', lhs, M.hide, { buffer = buf, nowait = true, desc = 'earmark: close' })
-    end
-    local group = api.nvim_create_augroup('earmark_hover_float', { clear = true })
-    api.nvim_create_autocmd('WinLeave', {
-      group = group,
-      buffer = buf,
-      callback = function()
-        vim.schedule(M.hide)
-      end,
-    })
   end
   return M.shown
+end
+
+--- Edit the note shown under the hover's cursor, at the same place (or the note of the
+--- annotation whose heading the cursor is on).
+function M.edit()
+  local H = M.shown
+  if not H or not api.nvim_win_is_valid(H.win) then return end
+  local c = api.nvim_win_get_cursor(H.win)
+  local r = H.rows and H.rows[c[1] - 1]
+  if not r then return end
+  local src_win, src_buf = H.src_win, H.src_buf
+  M.hide()
+  if not (api.nvim_win_is_valid(src_win) and api.nvim_buf_is_valid(src_buf)) then return end
+  api.nvim_set_current_win(src_win)
+  local E = require('earmark.ui.note').open(src_buf, r.id)
+  if E and r.line and api.nvim_win_is_valid(E.win) then
+    vim.cmd('stopinsert')
+    local line = api.nvim_buf_get_lines(E.buf, r.line - 1, r.line, false)[1]
+    if line then pcall(api.nvim_win_set_cursor, E.win, { r.line, math.min(c[2], math.max(#line - 1, 0)) }) end
+  end
+end
+
+--- The cursor went into the hover some other way than `<leader>mi` (a flash.nvim jump, a
+--- click, <C-w>w): onto a note line, that note opens for editing at the same place;
+--- elsewhere the hover stays focused like `<leader>mi`'s.
+function M.entered()
+  local H = M.shown
+  if not H or H.focused or not api.nvim_win_is_valid(H.win) then return end
+  if api.nvim_get_current_win() ~= H.win then return end
+  local r = H.rows and H.rows[api.nvim_win_get_cursor(H.win)[1] - 1]
+  if r and r.line then return M.edit() end
+  focus_on(H)
 end
 
 --- Hits under the cursor of `win` worth an automatic hover (all of them if any is).
@@ -251,6 +306,7 @@ end
 function M.on_cursor_moved()
   local H = M.shown
   local win = api.nvim_get_current_win()
+  if H and win == H.win then return end
   if H and not H.focused then
     local buf = api.nvim_win_get_buf(win)
     local hits = (win == H.src_win) and buffer.find(buf, cursor_pos(win)) or {}
@@ -296,8 +352,15 @@ function M.setup(au)
     place.track()
     M.on_cursor_moved()
   end)
-  au({ 'InsertEnter', 'BufLeave' }, function()
+  au('InsertEnter', function()
     if M.shown and not M.shown.focused then M.hide() end
+  end)
+  au('BufLeave', function()
+    -- (unless the cursor is going into the hover itself: M.entered)
+    vim.schedule(function()
+      local H = M.shown
+      if H and not H.focused and api.nvim_get_current_win() ~= H.win then M.hide() end
+    end)
   end)
   au('WinScrolled', function()
     local H = M.shown

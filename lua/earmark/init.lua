@@ -119,7 +119,8 @@ local function exact_hits(buf, spans, value)
 end
 
 --- Annotate `spans` with `value`. On a span that already has an annotation, `how` decides:
---- 'add' (default) adds `value` as another label, 'replace' changes its first label.
+--- 'add' (default) adds `value` as another label, 'replace' changes its first label,
+--- 'separate' makes another annotation on the same text (with a note of its own).
 local function apply(buf, spans, value, how, quiet)
   buf = buf == 0 and api.nvim_get_current_buf() or buf
   local n, onto = 0, 0
@@ -130,7 +131,7 @@ local function apply(buf, spans, value, how, quiet)
       values[1] = value
       if buffer.set_values(buf, hit.a.id, values) then n = n + 1 end
     else
-      local a, added = buffer.add(buf, r.s, r.e, value)
+      local a, added = buffer.add(buf, r.s, r.e, value, { separate = how == 'separate' })
       if a then n = n + 1 end
       if added == 'added' then onto = onto + 1 end
       -- a label that comes with tags (`tags` in its set) adds them
@@ -520,6 +521,25 @@ function M.note()
     local hits = buffer.find(0, cursor_pos())
     h = hits[math.min(math.max(1, vim.v.count), math.max(#hits, 1))]
   else
+    -- several annotations on exactly the same text (a label added as a separate one): ask
+    -- which note, unless a count says
+    local hits = buffer.find(0, cursor_pos())
+    local same = vim.tbl_filter(function(x)
+      return hits[1].s and x.s and vim.deep_equal(x.s, hits[1].s) and vim.deep_equal(x.e, hits[1].e)
+    end, hits)
+    if vim.v.count == 0 and #same > 1 then
+      local buf = api.nvim_get_current_buf()
+      return vim.ui.select(same, {
+        prompt = 'Note for which label?',
+        format_item = function(x)
+          local names = vim.tbl_map(function(v) return buffer.display_name(buf, v) end, x.a.values)
+          local first = x.a.note and vim.split(x.a.note, '\n')[1] or nil
+          return table.concat(names, ' + ') .. (first and ('  ✎ ' .. first) or '')
+        end,
+      }, function(choice)
+        if choice and api.nvim_buf_is_valid(buf) and api.nvim_get_current_buf() == buf then note.open(buf, choice.a.id) end
+      end)
+    end
     h = hit_under_cursor()
   end
   -- the same key closes the open note, unless the cursor is on another annotation (a
@@ -872,12 +892,12 @@ end
 
 --- Annotate a range in a buffer. `s`/`e` are 0-based {row, col}, end-exclusive.
 --- `value` is { set = <set name>, label = <label key> }. Nil when the span is empty.
-function M.annotate(buf, s, e, value)
+function M.annotate(buf, s, e, value, opts)
   buf, value = buf_of(buf), value_of(value)
   if not (buf and value and api.nvim_buf_is_loaded(buf)) then return nil end
   s, e = pos_of(buf, s, false), pos_of(buf, e, true)
   if not (s and e) or e[1] < s[1] or (e[1] == s[1] and e[2] <= s[2]) then return nil end
-  local a, how = buffer.add(buf, s, e, value)
+  local a, how = buffer.add(buf, s, e, value, { separate = type(opts) == 'table' and opts.separate == true })
   return vim.deepcopy(a), how
 end
 

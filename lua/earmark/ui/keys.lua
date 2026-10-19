@@ -119,6 +119,7 @@ M.sections = {
     title = 'Label already on that exact text',
     rows = {
       { k = 'a', text = 'add as another label' },
+      { k = 's', text = 'separate annotation, with its own note' },
       { k = 'r', text = 'replace the label' },
     },
   },
