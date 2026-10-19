@@ -2,10 +2,11 @@ local M = {}
 
 M.defaults = {
   -- Label sets. Strings are numbered palettes (keys 1-99): 'vivid', 'pastel', 'earth',
-  -- 'metal', 'cyber'. Named entries are custom sets:
+  -- 'metal', 'cyber', or a set that ships with earmark: 'feedback' (Keep, Change, Wrong,
+  -- Question, Unclear, Cut, Idea, Prefer, Later on keys 1-9). Named entries are custom sets:
   --   feedback = { labels = { { key = 'c', name = 'contradiction', color = '#e06c75' }, ... } }
   --   mine     = { generate = 'numbered', palette = { L = 0.7, C = 0.15, h0 = 200, zig = 0.04 } }
-  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber' },
+  sets = { 'vivid', 'pastel', 'earth', 'metal', 'cyber', 'feedback' },
   -- Directory of your own set files (one set per *.lua / *.json file), false to skip.
   -- Default: ~/.config/earmark/sets. Projects add <root>/.earmark/sets.
   sets_dir = nil,

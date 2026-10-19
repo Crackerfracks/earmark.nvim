@@ -133,11 +133,13 @@ function M.close()
 end
 
 local function switch(P, step)
+  local list = sets.list(P.src_buf)
+  if #list == 0 then return end
   local idx = 1
-  for i, n in ipairs(sets.order) do
+  for i, n in ipairs(list) do
     if n == P.set then idx = i end
   end
-  P.set = sets.order[((idx - 1 + step) % #sets.order) + 1]
+  P.set = list[((idx - 1 + step) % #list) + 1]
   render(P)
   api.nvim_win_set_cursor(P.win, { 1, 0 })
 end

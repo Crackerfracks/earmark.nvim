@@ -505,12 +505,13 @@ local function keymaps(P)
     move(P, -1)
   end)
   map({ 'i', 'n' }, '<C-s>', function()
-    if P.stage ~= 'label' or #sets.order < 2 then return end
+    local list = sets.list(P.src_buf)
+    if P.stage ~= 'label' or #list < 2 then return end
     local idx = 1
-    for i, n in ipairs(sets.order) do
+    for i, n in ipairs(list) do
       if n == P.set then idx = i end
     end
-    P.set = sets.order[(idx % #sets.order) + 1]
+    P.set = list[(idx % #list) + 1]
     P.cands = label_cands(P, input_text(P))
     P.sel = 1
     render(P)
