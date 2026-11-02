@@ -154,7 +154,7 @@ function M.doc_items(buf)
   local file = api.nvim_buf_get_name(buf)
   file = file ~= '' and file or nil
   local items = {}
-  for _, x in ipairs(buffer.list(buf)) do
+  for _, x in ipairs(buffer.blocks(buf)) do
     local a = x.annotation
     local where = x.s and ('%d:%d'):format(x.s[1] + 1, x.s[2] + 1) or 'detached'
     items[#items + 1] = {

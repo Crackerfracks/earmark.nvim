@@ -322,6 +322,7 @@ local function serialize(a)
     score = a.score,
     how = a.how,
     zk = a.zk,
+    group = a.group,
     created = a.created,
     updated = a.updated,
   }
@@ -418,6 +419,7 @@ local function load(buf, S)
   local items = {}
   for _, a in ipairs(rec.annotations or {}) do
     S.annos[a.id] = a
+    a.prefix, a.suffix = anchor.whole_chars(a.prefix), anchor.whole_chars(a.suffix)
     if a.status ~= 'detached' and a.s and a.e then
       items[#items + 1] = { id = a.id, s = a.s, e = a.e, quote = a.quote, prefix = a.prefix, suffix = a.suffix }
     else
@@ -632,6 +634,7 @@ function M.erase(buf, ids)
   M.refresh_snapshot(buf, S)
   local batch, t = store.uuid(), now()
   local done = {}
+  ids = M.with_block(S, ids)
   for _, id in ipairs(ids) do
     local a = S.annos[id]
     if a then
@@ -714,6 +717,43 @@ function M.annotation(buf, id)
   return S and S.annos[id] or nil
 end
 
+-- A Visual-block selection makes one annotation per row, linked by `group` (the id of the
+-- first row's annotation, the lead). The rows share a label; the lead holds the block's
+-- note and tags, and erasing any row erases the block.
+
+--- The lead of a's block (a itself when it is not in one, or its lead is gone).
+function M.lead(buf, a)
+  local S = M.get(bufnr(buf), { no_create = true })
+  return a and a.group and S and S.annos[a.group] or a
+end
+
+--- `ids` plus the other rows of any block among them.
+function M.with_block(S, ids)
+  local out, seen, groups = {}, {}, {}
+  for _, id in ipairs(ids) do
+    local a = S.annos[id]
+    if a and a.group then groups[a.group] = true end
+    if not seen[id] then seen[id], out[#out + 1] = true, id end
+  end
+  if next(groups) then
+    for id, a in pairs(S.annos) do
+      if a.group and groups[a.group] and not seen[id] then seen[id], out[#out + 1] = true, id end
+    end
+  end
+  return out
+end
+
+--- Make the annotations `ids` (one per row, first row first) one block.
+function M.link_block(buf, ids)
+  buf = bufnr(buf)
+  local S = M.get(buf, { no_create = true })
+  if not S or #ids < 2 or not S.annos[ids[1]] then return end
+  for _, id in ipairs(ids) do
+    if S.annos[id] then S.annos[id].group = ids[1] end
+  end
+  M.schedule_save(buf)
+end
+
 local function touch(buf, S, a, action)
   a.updated = now()
   M.schedule_save(buf)
@@ -726,6 +766,7 @@ function M.set_note(buf, id, text)
   local S = M.get(buf, { no_create = true })
   local a = S and S.annos[id]
   if not a then return false end
+  a = M.lead(buf, a)
   text = (text and text:match('%S')) and text or nil
   if a.note == text then return true end
   local tags = require('earmark.tags')
@@ -742,6 +783,7 @@ function M.set_tags(buf, id, tags)
   local S = M.get(buf, { no_create = true })
   local a = S and S.annos[id]
   if not a then return false end
+  a = M.lead(buf, a)
   local seen, list = {}, {}
   for _, t in ipairs(tags or {}) do
     if type(t) == 'string' and t ~= '' and not seen[t] then
@@ -762,11 +804,16 @@ function M.set_values(buf, id, values)
   local S = M.get(buf, { no_create = true })
   local a = S and S.annos[id]
   if not a or not values or #values == 0 then return false end
-  if vim.deep_equal(a.values, values) then return true end
-  a.values = values
-  local s, e = live_pos(buf, S, id)
-  if s then render(buf, S, a, s, e) end
-  touch(buf, S, a, 'update')
+  -- every row of a block takes the new label
+  for _, mid in ipairs(M.with_block(S, { id })) do
+    local m = S.annos[mid]
+    if not vim.deep_equal(m.values, values) then
+      m.values = vim.deepcopy(values)
+      local s, e = live_pos(buf, S, mid)
+      if s then render(buf, S, m, s, e) end
+      touch(buf, S, m, 'update')
+    end
+  end
   return true
 end
 
@@ -882,6 +929,45 @@ function M.list(buf)
       id = y.annotation.id,
     })
   end)
+  return out
+end
+
+--- Like M.list, with each block as one entry: its lead, quoting every row (one per line),
+--- `rows` = { {s, e}, ... } and `e` the end of the last placed row.
+function M.blocks(buf)
+  local out, at = {}, {}
+  for _, x in ipairs(M.list(buf)) do
+    local a = x.annotation
+    local lead = M.lead(buf, a)
+    if lead == a and not at[a.id] then
+      out[#out + 1] = x
+      at[a.id] = x
+    else
+      local y = at[lead.id]
+      if not y then
+        -- (a row listed before its lead, e.g. the lead row is detached)
+        y = { annotation = lead, rows = {} }
+        out[#out + 1] = y
+        at[lead.id] = y
+      end
+      y.rows = y.rows or {}
+      y.rows[#y.rows + 1] = { s = x.s, e = x.e, quote = a.quote }
+    end
+  end
+  for _, y in ipairs(out) do
+    if y.rows then
+      local a = y.annotation
+      local S = M.get(bufnr(buf), { no_create = true })
+      if not y.s and S then y.s, y.e = live_pos(bufnr(buf), S, a.id) end
+      table.insert(y.rows, 1, { s = y.s, e = y.e, quote = a.quote })
+      local quotes = {}
+      for _, r in ipairs(y.rows) do
+        quotes[#quotes + 1] = r.quote or ''
+        if r.e and (not y.e or r.e[1] > y.e[1]) then y.e = r.e end
+      end
+      y.annotation = vim.tbl_extend('force', {}, a, { quote = table.concat(quotes, '\n') })
+    end
+  end
   return out
 end
 

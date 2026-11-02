@@ -700,6 +700,45 @@ M.MAX_CONTEXT = 96
 
 --- Context for a new annotation: `n` bytes each side, grown (up to MAX_CONTEXT) until the
 --- quote with its context occurs only once, then extended to a word boundary.
+-- Byte offsets that split a UTF-8 character move outwards to the character's edge, so a
+-- saved prefix or suffix never starts or ends with half a character.
+local function cont(str, i) -- whether byte i (1-based) continues a multibyte character
+  local b = str:byte(i)
+  return b ~= nil and b >= 0x80 and b < 0xC0
+end
+local function snap_start(str, ps) -- 0-based start: the first byte kept is ps + 1
+  while ps > 0 and cont(str, ps + 1) do
+    ps = ps - 1
+  end
+  return ps
+end
+local function snap_end(str, se) -- 0-based end: the last byte kept is se
+  while se < #str and cont(str, se + 1) do
+    se = se + 1
+  end
+  return se
+end
+
+--- `str` without a half character at its start or end (context saved by older versions).
+function M.whole_chars(str)
+  if type(str) ~= 'string' or str == '' then return str end
+  local i = 1
+  while cont(str, i) do
+    i = i + 1
+  end
+  local j = #str
+  local k = j
+  while k >= i and cont(str, k) do
+    k = k - 1
+  end
+  local b = str:byte(k)
+  if b and b >= 0xC0 then
+    local need = b >= 0xF0 and 4 or b >= 0xE0 and 3 or 2
+    if j - k + 1 < need then j = k - 1 end
+  end
+  return str:sub(i, j)
+end
+
 function M.unique_context(lines, s, e, n)
   local t = lines.str and lines or M.text(lines)
   local so, eo = M.pos_to_off(t, s[1], s[2]), M.pos_to_off(t, e[1], e[2])
@@ -722,14 +761,14 @@ function M.unique_context(lines, s, e, n)
   while se < #t.str and k < 16 and not t.str:sub(se + 1, se + 1):match('%s') do
     se, k = se + 1, k + 1
   end
-  return t.str:sub(ps + 1, so), t.str:sub(eo + 1, se)
+  return t.str:sub(snap_start(t.str, ps) + 1, so), t.str:sub(eo + 1, snap_end(t.str, se))
 end
 
 --- Prefix/suffix context around a span, `n` bytes each.
 function M.context(lines, s, e, n)
   local t = lines.str and lines or M.text(lines)
   local so, eo = M.pos_to_off(t, s[1], s[2]), M.pos_to_off(t, e[1], e[2])
-  return t.str:sub(math.max(1, so - n + 1), so), t.str:sub(eo + 1, eo + n)
+  return t.str:sub(snap_start(t.str, math.max(0, so - n)) + 1, so), t.str:sub(eo + 1, snap_end(t.str, eo + n))
 end
 
 return M

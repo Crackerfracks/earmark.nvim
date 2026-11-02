@@ -59,7 +59,7 @@ function M.content(buf, hits)
     marks[#marks + 1] = { row, s, e, group }
   end
   for i, h in ipairs(hits) do
-    local a = h.a
+    local a = buffer.lead(buf, h.a) -- a block's note and tags are its first row's
     if i > 1 then lines[#lines + 1] = '' end
     local first = #lines
     local parts = {} -- { text, group }

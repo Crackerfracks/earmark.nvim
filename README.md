@@ -74,7 +74,7 @@ installed, each key also gets a short description and an icon for its group.
 | `{count}gh{motion}` | annotate with label `{count}` of the current set (`3ghiw`, `12gh$`) |
 | `gh{motion}` | annotate, choosing the label in a prompt (see below) |
 | `{count}ghh` | annotate the line |
-| `{Visual}{count}gh` | annotate the selection (block selections: one annotation per line) |
+| `{Visual}{count}gh` | annotate the selection (a block selection is one annotation: one label, one note) |
 | `.` | repeat with the same label, no prompt |
 | `<leader>mo` | give every other occurrence of the annotated text the same labels |
 
@@ -89,9 +89,9 @@ A Visual selection, then `5gh`
 
 ![A Visual selection, then `5gh`](docs/demos/annotate-visual.gif)
 
-A Visual block makes one annotation per line
+A Visual block highlights each line's part and works as one annotation
 
-![A Visual block makes one annotation per line](docs/demos/annotate-block.gif)
+![A Visual block highlights each line's part and works as one annotation](docs/demos/annotate-block.gif)
 
 `.` repeats with the same label
 
@@ -816,7 +816,10 @@ next time the file is opened.
 
 Positions are 0-based `{ row, col }` (byte columns), spans end-exclusive; `buf` 0 is the
 current buffer. A value is `{ set = 'vivid', label = '3', choice = 'b'?, text = '…'? }`.
-Annotations and tables you get back are copies: changing them changes nothing.
+Annotations and tables you get back are copies: changing them changes nothing. A Visual
+block is one annotation per row, each with `group` set to the first row's id; that first
+row holds the note and tags, `set_note`/`set_tags` on any row go to it, and `set_values`
+and `erase` on any row act on the whole block.
 
 ```lua
 local em = require('earmark')

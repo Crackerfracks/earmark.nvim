@@ -270,4 +270,28 @@ T['a replaced word maps to its replacement, also when a paragraph above was dele
   eq(out['seven votes to two'].text, 'nine votes to four')
 end
 
+T['saved context never cuts a multibyte character in half'] = function()
+  local function whole(str)
+    if str == '' then return true end
+    local b = str:byte(1)
+    return not (b >= 0x80 and b < 0xC0) and vim.str_utf_end(str, #str) == 0
+  end
+  -- runs of ▲ (3 bytes) with no spaces, so the edges land inside a character
+  for pad = 0, 6 do
+    local line = string.rep('▲', 20 + pad) .. 'X' .. string.rep('▲', 20 + pad)
+    local col = #string.rep('▲', 20 + pad)
+    for n = 1, 8 do
+      local pre, suf = anchor.unique_context({ line }, { 0, col }, { 0, col + 1 }, n)
+      eq({ whole(pre), whole(suf) }, { true, true })
+      pre, suf = anchor.context({ line }, { 0, col }, { 0, col + 1 }, n)
+      eq({ whole(pre), whole(suf) }, { true, true })
+    end
+  end
+  -- context saved broken by older versions is trimmed when read
+  local tri = '▲'
+  eq(anchor.whole_chars(tri:sub(2) .. 'ab' .. tri .. tri:sub(1, 2)), 'ab' .. tri)
+  eq(anchor.whole_chars('plain'), 'plain')
+  eq(anchor.whole_chars(tri:sub(3)), '')
+end
+
 return T
