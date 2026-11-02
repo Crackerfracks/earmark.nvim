@@ -431,7 +431,9 @@ only.
 `<leader>mm` opens the annotation's note, a Markdown buffer in a float right under the
 span (an empty note starts in Insert mode). `q`, `:w`, `<C-s>`, leaving the float or
 closing it any other way saves it; `,s` moves it to a split at the bottom and `,f` back
-(`,` being your `maplocalleader`). Clearing all the text removes the note. Write `#tags`
+(`,` being your `maplocalleader`; the float's footer shows yours). The float starts wide,
+grows with the text up to `note.width`/`note.max_width` and then wraps and grows taller;
+<kbd>Alt</kbd>+arrow keys move it (in Normal and Insert mode) when it covers something. Clearing all the text removes the note. Write `#tags`
 and `@identifiers` anywhere in a note; earmark picks them up. The note stays open while a
 float you opened from it has focus (an emoji or file picker, say), so what you pick goes
 into the note. When separate annotations cover the same text, `<leader>mm` asks which

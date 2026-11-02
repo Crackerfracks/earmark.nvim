@@ -203,7 +203,8 @@ how they're drawn. `color_adapt = false` draws the exact colours.
 `<leader>mm` opens the note, a Markdown buffer in a float under the span (an
 empty note starts in Insert mode). `q`, |:w|, <C-s>, leaving the float or
 closing it saves; `<localleader>s` moves it to a split, `<localleader>f`
-back. Clearing all the text removes the note. The note stays open while a
+back. The float grows with the text (wider, then taller once it wraps), and
+<M-Up>, <M-Down>, <M-Left> and <M-Right> move it. Clearing all the text removes the note. The note stays open while a
 float opened from it has focus (an emoji or file picker), so the choice goes
 into the note. When separate annotations cover the same text, `<leader>mm`
 asks which note; a count (`2<leader>mm`) picks without asking.
