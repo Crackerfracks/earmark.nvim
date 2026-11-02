@@ -78,8 +78,9 @@ M.defaults = {
   -- The note editor (`<leader>mm`).
   note = {
     layout = 'float', -- 'float' | 'split' (,s / ,f switch while editing)
-    width = 0.6, -- at most this fraction of the window width ...
-    max_width = 100, -- ... and this many columns
+    width = 0.75, -- at most this fraction of the window width ...
+    max_width = 120, -- ... and this many columns
+    gutter = true, -- a blank column at the left edge of the float, so the text isn't against the border
     height = { min = 5, max = 0.5 },
     winblend = 0,
   },

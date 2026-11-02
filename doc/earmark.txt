@@ -307,7 +307,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
   prompt = { width = 44, max_rows = 8, ask_name = 'first_use',
              count_hint = true, confirm_stack = true },
   ui = { border = 'rounded' },
-  note = { layout = 'float', width = 0.6, max_width = 100,
+  note = { layout = 'float', width = 0.75, max_width = 120, gutter = true,
            height = { min = 5, max = 0.5 }, winblend = 0 },
   hover = { auto = true, delay = 120, show_when = 'named_or_note',
             max_width = 0.5, max_height = 0.5 },
