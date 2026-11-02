@@ -113,7 +113,8 @@ local function style_window(E)
   local wo = vim.wo[win]
   wo.wrap, wo.linebreak = true, true
   wo.conceallevel = 2
-  wo.signcolumn, wo.number, wo.relativenumber = 'no', false, false
+  wo.number, wo.relativenumber = false, false
+  wo.signcolumn = (E.layout == 'float' and config.options.note.gutter) and 'yes:1' or 'no'
   wo.fillchars = 'eob: '
   wo.winblend = E.layout == 'float' and config.options.note.winblend or 0
   if hex and E.layout == 'float' then

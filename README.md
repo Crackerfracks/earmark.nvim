@@ -588,7 +588,8 @@ require('earmark').setup({
   },
   note = {
     layout = 'float', -- 'float' | 'split'
-    width = 0.6, max_width = 100, -- fraction of the window, and a column cap
+    width = 0.75, max_width = 120, -- fraction of the window, and a column cap
+    gutter = true, -- a blank column at the float's left edge
     height = { min = 5, max = 0.5 },
     winblend = 0,
   },
