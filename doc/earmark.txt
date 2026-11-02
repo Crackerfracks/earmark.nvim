@@ -65,8 +65,9 @@ Annotate~
                    set (`3ghiw`, `12gh$`). Without a count the label prompt
                    opens (|earmark-prompt|). `.` repeats with the same label.
                                                           *earmark-operator*
-`{Visual}{count}gh`  Annotate the selection. A blockwise selection makes one
-                   annotation per line.
+`{Visual}{count}gh`  Annotate the selection. A blockwise selection works as
+                   one annotation: one label, one note and one set of tags
+                   for all its lines, erased together.
 `{count}ghh`         Annotate the line.                       *earmark-line*
 `<leader>mo`         Give every other occurrence of the annotated text the
                    same labels.                         *earmark-occurrences*
@@ -431,7 +432,9 @@ earmark.annotate({buf}, {s}, {e}, {value} [, {opts}])   *earmark.annotate()*
     "added", or "same" if it has it); `{ separate = true }` makes a new one.
 earmark.list({buf})                                         *earmark.list()*
     `{ { annotation = a, s = {row, col}, e = {row, col} }, ... }` in order;
-    s and e are nil when detached.
+    s and e are nil when detached. A Visual block lists one entry per row,
+    each with `group` = the first row's id; that row holds the block's note
+    and tags, and set_values and erase on any row act on the whole block.
 earmark.at({buf}, {pos})                                      *earmark.at()*
     Annotations at {pos} (default: cursor), innermost first, in the same
     shape as |earmark.list()|.

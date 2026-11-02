@@ -272,7 +272,8 @@ end
 function M.open(src_buf, id, opts)
   opts = opts or {}
   if src_buf == 0 then src_buf = api.nvim_get_current_buf() end
-  local a = buffer.annotation(src_buf, id)
+  local a = buffer.lead(src_buf, buffer.annotation(src_buf, id)) -- a block's note is its lead's
+  id = a and a.id or id
   if not a or place.in_cmdwin() then return end
   if M.active then
     local same = M.active.id == id

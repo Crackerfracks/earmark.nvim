@@ -124,6 +124,7 @@ end
 local function apply(buf, spans, value, how, quiet)
   buf = buf == 0 and api.nvim_get_current_buf() or buf
   local n, onto = 0, 0
+  local new = {} -- annotations made here, for a Visual block's rows to become one
   for _, r in ipairs(spans) do
     local hit = how == 'replace' and exact_hits(buf, { r }, value)[1]
     if hit then
@@ -133,6 +134,7 @@ local function apply(buf, spans, value, how, quiet)
     else
       local a, added = buffer.add(buf, r.s, r.e, value, { separate = how == 'separate' })
       if a then n = n + 1 end
+      if a and not added then new[#new + 1] = a.id end
       if added == 'added' then onto = onto + 1 end
       -- a label that comes with tags (`tags` in its set) adds them
       local l = a and added ~= 'same' and sets.label(value)
@@ -143,6 +145,7 @@ local function apply(buf, spans, value, how, quiet)
     end
   end
   if n > 0 then last_value = value end
+  if #spans > 1 and #new > 1 then buffer.link_block(buf, new) end
   if onto > 0 and not quiet then
     notify(('added %s to the annotation already there (%s changes its label instead)'):format(
       buffer.display_name(buf, value), key_name('relabel')))

@@ -68,7 +68,7 @@ function M.markdown(buf, opts)
   if buf == 0 then buf = api.nvim_get_current_buf() end
   opts = vim.tbl_extend('force', config.options.export, opts or {})
   require('earmark.sets').pick_variants(require('earmark.sets').path_of(buf))
-  local list = buffer.list(buf)
+  local list = buffer.blocks(buf) -- a Visual block is one entry
   local placed, detached = {}, {}
   for _, x in ipairs(list) do
     if x.s then placed[#placed + 1] = x else detached[#detached + 1] = x end
