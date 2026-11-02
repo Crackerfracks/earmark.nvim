@@ -41,12 +41,41 @@ local function group_for(set, key)
   return group_ids[k]
 end
 
+--- How annotations are drawn (`style` in the options, a set or a label; `:Earmark style`).
+M.STYLES = { 'fill', 'tint', 'underline', 'undercurl', 'text' }
+
+--- Whether `look` is a style: one of M.STYLES or a function(hex, info) -> highlight table.
+function M.is_style(look)
+  return type(look) == 'function' or vim.tbl_contains(M.STYLES, look)
+end
+
 local function define(name, spec)
   if spec.fg then
     vim.api.nvim_set_hl(0, name, { fg = color.adapt(spec.fg), bold = spec.bold or nil })
     return
   end
   local bg = color.adapt(spec.bg)
+  local look = spec.look or 'fill'
+  if look ~= 'fill' then
+    -- stale and ambiguous keep their marks: dashes and dots instead of a plain line
+    local line = spec.style == 'stale' and 'underdashed' or spec.style == 'ambiguous' and 'underdotted' or nil
+    local hl
+    if type(look) == 'function' then
+      local ok, got = pcall(look, bg, { status = spec.style })
+      hl = ok and type(got) == 'table' and got or { bg = bg, fg = color.contrast_fg(bg) }
+    elseif look == 'tint' then
+      -- a pale wash of the colour, underlined in the full colour
+      local t = color.shift(bg, 0.35, 0)
+      hl = { bg = t, fg = color.contrast_fg(t), [line or 'underline'] = true, sp = bg }
+    elseif look == 'underline' or look == 'undercurl' then
+      hl = { [line or look] = true, sp = bg }
+    else -- 'text'
+      hl = { fg = bg, bold = true }
+      if line then hl[line], hl.sp = true, bg end
+    end
+    vim.api.nvim_set_hl(0, name, hl)
+    return
+  end
   local hl = { bg = bg, fg = color.contrast_fg(bg) }
   if spec.style == 'stale' then
     -- faded: most of the colour drained from the fill, underdashed
@@ -60,10 +89,10 @@ local function define(name, spec)
 end
 
 --- Highlight group with background `bg` and an optional status style, created on demand.
-local function ensure(name, bg, style)
+local function ensure(name, bg, style, look)
   local g = groups[name]
-  if not g or g.bg ~= bg then
-    groups[name] = { bg = bg, style = style }
+  if not g or g.bg ~= bg or g.look ~= look then
+    groups[name] = { bg = bg, style = style, look = look }
     define(name, groups[name])
   end
   return name
@@ -159,7 +188,12 @@ local function normalize(name, spec)
         text = type(text) == 'table' and text or nil,
         requires = type(l.requires) == 'table' and l.requires or nil,
         tags = type(l.tags) == 'table' and #l.tags > 0 and l.tags or nil,
+        style = l.style,
       }
+      if l.style ~= nil and not M.is_style(l.style) then
+        report(name, spec, ('label %s: style must be one of %s'):format(key, table.concat(M.STYLES, ', ')))
+        label.style = nil
+      end
       if choices then
         label.choice_by_key = {}
         for _, c in ipairs(choices) do
@@ -185,7 +219,11 @@ local function normalize(name, spec)
     files = type(spec) == 'table' and spec._files or nil,
     expires = expiry(name, spec),
     auto = not (type(spec) == 'table' and spec.auto == false),
+    style = type(spec) == 'table' and M.is_style(spec.style) and spec.style or nil,
   }
+  if type(spec) == 'table' and spec.style ~= nil and not set.style then
+    report(name, spec, 'style must be one of ' .. table.concat(M.STYLES, ', '))
+  end
   for _, l in ipairs(labels) do
     l.group = group_for(name, l.key)
     set.by_key[l.key] = l
@@ -300,7 +338,7 @@ local function extended(spec)
   for _, l in ipairs(base.labels) do
     labels[#labels + 1] = {
       key = l.key, name = l.name, desc = l.desc, color = l.color, color_name = l.color_name,
-      choices = l.choices, text = l.text, requires = l.requires, tags = l.tags,
+      choices = l.choices, text = l.text, requires = l.requires, tags = l.tags, style = l.style,
     }
     at[l.key] = #labels
   end
@@ -650,19 +688,31 @@ end
 
 --- Highlight group for a value. `colors` are the doc's overrides; `status` picks the
 --- stale/ambiguous look.
+--- The style a value is drawn in: its label's, else its set's, else the global one.
+function M.style_of(value)
+  local l = M.label(value)
+  local set = value and M.by_name[value.set]
+  local look = (l and l.style) or (set and set.style) or require('earmark.config').options.style
+  return M.is_style(look) and look or 'fill'
+end
+
 function M.group(value, colors, status)
   local l = M.label(value)
   local bg = M.color(value, colors)
   if not bg then return 'EarmarkUnknown' end
   local style = (status == 'stale' or status == 'ambiguous') and status or nil
+  local look = M.style_of(value)
   local name
   if l and bg == l.color then
     name = l.group
   else
     name = 'EarmarkHex' .. bg:gsub('#', '')
   end
+  if look ~= 'fill' then
+    name = name .. (type(look) == 'function' and ('Fn' .. tostring(look):match('0x(%x+)') or 'Fn') or (look:sub(1, 1):upper() .. look:sub(2)))
+  end
   if style then name = name .. (style == 'stale' and 'Stale' or 'Ambiguous') end
-  return ensure(name, bg, style)
+  return ensure(name, bg, style, look ~= 'fill' and look or nil)
 end
 
 --- Foreground-only group in colour `hex` (indicators, swatches, names in floats).

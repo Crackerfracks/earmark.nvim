@@ -258,6 +258,16 @@ text could be now (scored candidates), attach it to a selection, or erase.
 `overlap = { style = 'top' }` turns mixing off: the smallest span is on top.
 
 ==============================================================================
+                                                             *earmark-style*
+How annotations are drawn is the `style` option: "fill" (the label's colour
+behind the text, the default), "tint" (a pale wash, underlined in the
+colour), "underline", "undercurl", "text" (the text itself in the colour),
+or a function(hex, { status }) that returns a highlight table for
+|nvim_set_hl()|. A set or a single label can have its own `style`, which
+wins over the global one. `:Earmark style {name}` switches the global style
+while you work. Stale and ambiguous annotations keep their dashed and dotted
+lines in every style.
+
 8. COMMANDS                                                 *earmark-commands*
 
                                                                     *:Earmark*
@@ -287,6 +297,8 @@ text could be now (scored candidates), attach it to a selection, or erase.
     color {#rrggbb|reset}
                        recolour the label under the cursor in this file
     set [name]         switch to a label set (no name: the next one)
+    style [name]       draw annotations as fill, tint, underline, undercurl
+                       or text (no name: the next one); see |earmark-style|
     reload             re-read label sets and this file's annotations
     log                recent warnings and errors (also in
                        `<storage_dir>/earmark.log`)
@@ -314,6 +326,7 @@ text could be now (scored candidates), attach it to a selection, or erase.
             max_width = 0.5, max_height = 0.5 },
   indicators = { mode = 'eol', tags = false, max_pencils = 3, identifiers = true,
                  show_empty = false },
+  style = 'fill',  -- |earmark-style|
   overlap = { style = 'blend',     -- or 'top'
               extra = 'split' },  -- or 'squares'
   export = { group_by = 'label', include_detached = true, format = nil,

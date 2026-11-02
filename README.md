@@ -508,6 +508,16 @@ the sign column, and toggling changes only the view: nothing is re-read or saved
 `indicators.show_empty = true` adds a dot for annotations without a note;
 `indicators.mode = 'none'` shows nothing at all.
 
+### Styles
+
+Annotations are drawn as a colour fill by default. `style` picks another look: `'tint'` (a
+pale wash, underlined in the colour), `'underline'`, `'undercurl'`, `'text'` (the text in the
+colour), or a function that gets the colour and returns a highlight table. A set or a label
+can have its own `style` (`{ name = 'Typo', color = '#e05050', style = 'undercurl' }`), which
+wins over the global one. `:Earmark style undercurl` switches while you work; `:Earmark
+style` alone goes to the next one. Stale and ambiguous annotations keep their dashed and
+dotted lines in every style.
+
 ### What overlaps look like
 
 - Where annotations of **different labels** overlap, the overlap is drawn in the mix of their
@@ -533,7 +543,7 @@ top.
 
 ### Commands
 
-`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|reload|log|help}`
+`:Earmark {info|peek|note|tags|toggle_hover|toggle_indicators|erase|clear|restore|next|prev|next_same|prev_same|jump|pick|pick_all|review|diff|reanchor|qf|scratch|check|export|occurrences|zk [new|link|pick|sources]|palette [set]|color|cycle_set|pick_set|relabel|add_value|rename|set [name]|style [name]|reload|log|help}`
 
 `:Earmark info` (the default) prints the details of the annotations under the cursor.
 
@@ -608,6 +618,7 @@ require('earmark').setup({
     identifiers = true, -- show @ident tags as [ident]
     show_empty = false,
   },
+  style = 'fill', -- 'fill' | 'tint' | 'underline' | 'undercurl' | 'text' | function(hex, info)
   overlap = { style = 'blend', extra = 'split' }, -- 'blend' | 'top'; 'split' | 'squares'
 })
 ```
