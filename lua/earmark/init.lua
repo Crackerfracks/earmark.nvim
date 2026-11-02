@@ -448,6 +448,25 @@ function M.rename()
   end, { stage = 'name', value = v1 })
 end
 
+--- `:Earmark style [name]`: draw annotations in style `name` (no name: the next one).
+--- Sets and labels with a style of their own keep it.
+function M.use_style(name)
+  local list = sets.STYLES
+  if not name then
+    local cur = config.options.style
+    local i = type(cur) == 'string' and vim.fn.index(list, cur) or -1
+    name = list[(i + 1) % #list + 1]
+  end
+  if not vim.tbl_contains(list, name) then
+    return notify(('no style "%s" (%s)'):format(name, table.concat(list, ', ')), vim.log.levels.WARN)
+  end
+  config.options.style = name
+  for b in pairs(buffer.state) do
+    buffer.rerender(b)
+  end
+  notify('style: ' .. name)
+end
+
 function M.cycle_set(step)
   local name = sets.cycle(step)
   if name then require('earmark.ui.set_popup').show(name) end
@@ -1124,6 +1143,16 @@ local function register_actions()
     end,
     complete = function()
       return sets.list()
+    end,
+  })
+  A({
+    name = 'style',
+    desc = 'change how annotations look',
+    cmd = function(args)
+      M.use_style(args[1])
+    end,
+    complete = function()
+      return sets.STYLES
     end,
   })
   A({

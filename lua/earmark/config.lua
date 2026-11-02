@@ -104,6 +104,11 @@ M.defaults = {
     identifiers = true, -- show @ident tags as [ident]
     show_empty = false, -- a dot for annotations without a note
   },
+  -- How annotations are drawn: 'fill' (the label's colour behind the text), 'tint' (a pale
+  -- wash, underlined in the colour), 'underline', 'undercurl', 'text' (the text in the
+  -- colour), or function(hex, { status }) returning a highlight table. Sets and labels can
+  -- have their own `style`; `:Earmark style` switches this one while you work.
+  style = 'fill',
   overlap = {
     -- 'blend': where annotations overlap, draw the mix of their colours underlined in the
     -- outer one's colour. 'top': the smallest span simply covers the others.
