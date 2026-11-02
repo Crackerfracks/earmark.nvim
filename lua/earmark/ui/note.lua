@@ -44,9 +44,8 @@ local function footer(E)
   if not a then return nil end
   local q = (a.quote or ''):gsub('%s+', ' ')
   if vim.fn.strchars(q) > 30 then q = vim.fn.strcharpart(q, 0, 29) .. '…' end
-  local ll = vim.g.maplocalleader or '\\'
-  ll = ll == ' ' and '<Space>' or ll
-  return (' "%s" · %ss split '):format(q, ll)
+  local key = require('earmark.ui.keys').show_key('<localleader>s')
+  return (' "%s" · %s split · Alt+arrows move '):format(q, key)
 end
 
 --- Save the editor's text to the annotation if it changed. Returns true when saved.
@@ -91,16 +90,29 @@ local function float_config(E)
   for _, l in ipairs(lines) do
     longest = math.max(longest, vim.fn.strdisplaywidth(l))
   end
+  local gutter = o.gutter and 1 or 0
   local maxw = math.max(20, math.min(o.max_width, math.floor(W * o.width)))
-  local w = math.max(math.min(40, maxw), math.min(longest + 4, maxw))
+  -- starts roomy and grows with the text (M.fit), wrapping only at the widest
+  local w = math.max(math.min(60, maxw), math.min(longest + 4 + gutter, maxw))
+  local rows = 0
+  for _, l in ipairs(lines) do
+    rows = rows + math.max(1, math.ceil(vim.fn.strdisplaywidth(l) / math.max(1, w - gutter)))
+  end
   local maxh = math.max(o.height.min, math.floor(H * o.height.max))
-  local h = math.max(o.height.min, math.min(#lines + 1, maxh))
+  local h = math.max(o.height.min, math.min(rows + 1, maxh))
   local s, e = buffer.live_pos(E.src_buf, buffer.state[E.src_buf], E.id)
   local cursor = api.nvim_win_get_cursor(src_win)
   s = s or { cursor[1] - 1, cursor[2] }
   e = e or { s[1], s[2] + 1 }
-  local cfg = place.for_span(src_win, s, e, w, h, { bordered = true })
+  -- (once placed, it stays on that side of the span while it grows)
+  local cfg = place.for_span(src_win, s, e, w, h, { bordered = true, prefer = E.side })
+  E.side = E.side or cfg.side
   cfg.side = nil
+  -- moved by hand (Alt+arrows): keep that offset, inside the window
+  if E.offset then
+    cfg.row = math.max(0, math.min(cfg.row + E.offset[1], H - cfg.height - 2))
+    cfg.col = math.max(0, math.min(cfg.col + E.offset[2], W - cfg.width - 2))
+  end
   cfg.zindex = 50
   local b = place.border_opts(config.options.ui.border, title(E), footer(E))
   cfg.border, cfg.title, cfg.title_pos, cfg.footer, cfg.footer_pos = b.border, b.title, b.title_pos, b.footer, b.footer_pos
@@ -127,6 +139,29 @@ local function open_float(E)
   E.layout = 'float'
   E.win = api.nvim_open_win(E.buf, true, float_config(E))
   style_window(E)
+end
+
+--- Resize (and re-place) the float to fit its text, when that changes anything.
+function M.fit(E)
+  E = E or M.active
+  if not (E and E.layout == 'float' and E.win and api.nvim_win_is_valid(E.win)) then return end
+  local want, have = float_config(E), api.nvim_win_get_config(E.win)
+  for _, k in ipairs({ 'row', 'col', 'width', 'height' }) do
+    if want[k] ~= have[k] then
+      pcall(api.nvim_win_set_config, E.win, { relative = want.relative, win = want.win, row = want.row, col = want.col,
+        width = want.width, height = want.height })
+      return
+    end
+  end
+end
+
+--- Move the float by rows and columns (it keeps that offset while it grows).
+function M.move(E, dr, dc)
+  E = E or M.active
+  if not (E and E.layout == 'float') then return end
+  E.offset = E.offset or { 0, 0 }
+  E.offset[1], E.offset[2] = E.offset[1] + dr, E.offset[2] + dc
+  M.fit(E)
 end
 
 local function open_split(E)
@@ -186,6 +221,9 @@ local function keymaps(E)
   map('n', '<localleader>f', function() if E.layout == 'split' then M.toggle_layout(E) end end, 'note in a float')
   local key = config.options.keys and config.options.keys.note
   if key then map('n', key, function() M.close(E) end, 'close note') end
+  for lhs, d in pairs({ ['<M-Up>'] = { -1, 0 }, ['<M-Down>'] = { 1, 0 }, ['<M-Left>'] = { 0, -4 }, ['<M-Right>'] = { 0, 4 } }) do
+    map({ 'n', 'i' }, lhs, function() M.move(E, d[1], d[2]) end, 'move the note float')
+  end
 end
 
 local function autocmds(E)
@@ -195,6 +233,14 @@ local function autocmds(E)
     buffer = E.buf,
     callback = function()
       if not M.save(E) then vim.bo[E.buf].modified = false end
+    end,
+  })
+  -- grow (or shrink) with the text
+  api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI', 'TextChangedP' }, {
+    group = group,
+    buffer = E.buf,
+    callback = function()
+      M.fit(E)
     end,
   })
   api.nvim_create_autocmd('QuitPre', {

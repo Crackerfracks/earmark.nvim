@@ -206,4 +206,60 @@ T['flash inside the note jumps within it'] = function()
   eq(child.lua_get('vim.api.nvim_win_get_cursor(0)'), { 1, 6 })
 end
 
+local function note_win()
+  return child.lua_get([[(function()
+    local E = require('earmark.ui.note').active
+    local c = vim.api.nvim_win_get_config(E.win)
+    return { width = c.width, height = c.height, row = c.row, col = c.col }
+  end)()]])
+end
+
+T['the note float grows with the text, then wraps and grows taller'] = function()
+  child.o.lines, child.o.columns = 40, 160
+  h.open(LINES)
+  mark()
+  h.cursor(1, 5)
+  child.type_keys(' mm')
+  local w0 = note_win()
+  eq(w0.width >= 60, true) -- roomy from the start
+  child.type_keys(string.rep('word ', 20)) -- 100 columns
+  local w1 = note_win()
+  eq(w1.width > w0.width, true)
+  eq(w1.width <= 120, true)
+  child.type_keys(string.rep('more ', 160)) -- past the widest: wraps, so taller
+  local w2 = note_win()
+  eq(w2.width, 120)
+  eq(w2.height > w0.height, true)
+  eq(w2.row, w0.row) -- stayed on its side of the span
+end
+
+T['Alt+arrows move the float, and it keeps the offset while it grows'] = function()
+  child.o.lines, child.o.columns = 40, 160
+  h.open(LINES)
+  mark()
+  h.cursor(1, 5)
+  child.type_keys(' mm')
+  local w0 = note_win()
+  child.type_keys('<M-Down>', '<M-Down>', '<M-Right>')
+  local w1 = note_win()
+  eq({ w1.row - w0.row, w1.col - w0.col }, { 2, 4 })
+  eq(child.lua_get('vim.api.nvim_get_mode().mode'), 'i') -- still typing
+  child.type_keys('text')
+  eq(note_win().row, w1.row)
+  child.type_keys('<Esc>', '<M-Up>')
+  eq(note_win().row, w1.row - 1)
+end
+
+T['the footer names the split key as you type it'] = function()
+  h.open(LINES)
+  mark()
+  h.cursor(1, 5)
+  child.type_keys(' mm')
+  local footer = child.lua_get([[(function()
+    local f = vim.api.nvim_win_get_config(require('earmark.ui.note').active.win).footer
+    return type(f) == 'table' and table.concat(vim.tbl_map(function(x) return x[1] end, f)) or f
+  end)()]])
+  eq(footer:find(',s split', 1, true) ~= nil, true)
+end
+
 return T

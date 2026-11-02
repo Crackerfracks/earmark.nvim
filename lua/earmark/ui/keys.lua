@@ -112,7 +112,8 @@ M.sections = {
     rows = {
       { k = 'q', text = 'save and close' },
       { k = '<C-s>', text = 'save' },
-      { k = '<localleader>s', text = 'move to a split (f: back to a float)' },
+      { k = '<localleader>s', text = 'move to a split (<localleader>f: back to a float)' },
+      { k = '<M-Up>', text = 'move the float (Alt + any arrow key)' },
     },
   },
   {
